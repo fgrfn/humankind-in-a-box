@@ -1,0 +1,571 @@
+{
+ "frames": {
+  "berry_bush": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 65,
+    "w": 96,
+    "x": 2,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 65,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 65,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "birch": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 80,
+    "w": 96,
+    "x": 2,
+    "y": 146
+   },
+   "sourceSize": {
+    "h": 80,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 80,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "boulder": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 66,
+    "w": 96,
+    "x": 198,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 66,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 66,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "copper_rock": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 65,
+    "w": 96,
+    "x": 100,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 65,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 65,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "dead_tree": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 74,
+    "w": 96,
+    "x": 394,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 74,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 74,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "deep_water": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 2,
+    "y": 2
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "dry_grass": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 68,
+    "y": 2
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "farmland": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 134,
+    "y": 2
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "forest_floor": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 200,
+    "y": 2
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "grass": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 266,
+    "y": 2
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "ice": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 332,
+    "y": 2
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "marsh": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 398,
+    "y": 2
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "moss": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 464,
+    "y": 2
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "mud": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 2,
+    "y": 36
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "oak": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 80,
+    "w": 96,
+    "x": 100,
+    "y": 146
+   },
+   "sourceSize": {
+    "h": 80,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 80,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "path": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 68,
+    "y": 36
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "pine": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 80,
+    "w": 96,
+    "x": 198,
+    "y": 146
+   },
+   "sourceSize": {
+    "h": 80,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 80,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "reeds": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 71,
+    "w": 96,
+    "x": 296,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 71,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 71,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "rock": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 134,
+    "y": 36
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "sand": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 200,
+    "y": 36
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "shallow_water": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 266,
+    "y": 36
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "snow": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 332,
+    "y": 36
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "steppe": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 398,
+    "y": 36
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "tundra": {
+   "anchor": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "frame": {
+    "h": 32,
+    "w": 64,
+    "x": 464,
+    "y": 36
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 64
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  }
+ },
+ "meta": {
+  "format": "RGBA8888",
+  "image": "atlas.png",
+  "kinds": {
+   "berry_bush": "object",
+   "birch": "object",
+   "boulder": "object",
+   "copper_rock": "object",
+   "dead_tree": "object",
+   "deep_water": "terrain",
+   "dry_grass": "terrain",
+   "farmland": "terrain",
+   "forest_floor": "terrain",
+   "grass": "terrain",
+   "ice": "terrain",
+   "marsh": "terrain",
+   "moss": "terrain",
+   "mud": "terrain",
+   "oak": "object",
+   "path": "terrain",
+   "pine": "object",
+   "reeds": "object",
+   "rock": "terrain",
+   "sand": "terrain",
+   "shallow_water": "terrain",
+   "snow": "terrain",
+   "steppe": "terrain",
+   "tundra": "terrain"
+  },
+  "scale": "1",
+  "size": {
+   "h": 228,
+   "w": 530
+  },
+  "tile": {
+   "h": 32,
+   "w": 64
+  }
+ }
+}

@@ -207,7 +207,53 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             "river": river,
             "deposit": deposit,
             "steps": [] if steps is None else _layer(steps["data"]),
+            "path_levels": {
+                "trail": 0 if packs.life is None else packs.life.path_trail_steps,
+                "road": 0 if packs.life is None else packs.life.path_road_steps,
+            },
         }
+
+    def building_out(row: sqlite3.Row, language: Language) -> dict[str, Any]:
+        known = packs.buildings.get(row["type"])
+        return {
+            "id": row["id"],
+            "type": row["type"],
+            "name": row["type"] if known is None else getattr(known.name, language),
+            "y": row["y"],
+            "x": row["x"],
+            "state": row["state"],
+            "started_year": row["started"] // 360,
+            "finished_year": None if row["finished"] is None else row["finished"] // 360,
+            "progress_percent": 100
+            if row["state"] != "site" or known is None
+            else min(99, 100 * row["progress"] // max(1, known.work)),
+        }
+
+    @api.get("/worlds/{world_id}/places")
+    def places(world_id: int, conn: Db, lang: Lang = default_language) -> list[dict[str, Any]]:
+        """Settlements, lived in or abandoned, with everything that stands there."""
+        world_row(conn, world_id)
+        built: dict[int, list[dict[str, Any]]] = {}
+        for row in _rows(
+            conn, "SELECT * FROM buildings WHERE world_id = ? ORDER BY id", (world_id,)
+        ):
+            built.setdefault(row["place_id"], []).append(building_out(row, lang))
+        return [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "y": row["y"],
+                "x": row["x"],
+                "founded_year": row["founded"] // 360,
+                "abandoned_year": None if row["abandoned"] is None else row["abandoned"] // 360,
+                "group_id": row["group_id"],
+                "buildings": built.get(row["id"], []),
+            }
+            for row in _rows(
+                conn, "SELECT * FROM places WHERE world_id = ? ORDER BY id", (world_id,)
+            )
+            if row["abandoned"] is None or row["id"] in built
+        ]
 
     @api.get("/worlds/{world_id}/layers/{layer}")
     def layer(world_id: int, layer: str, conn: Db) -> dict[str, Any]:
@@ -228,12 +274,21 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
 
     def group_out(conn: sqlite3.Connection, row: sqlite3.Row, language: Language) -> dict[str, Any]:
         place = None
+        buildings: list[dict[str, Any]] = []
         if row["place"]:
             found = conn.execute(
                 "SELECT name FROM places WHERE world_id = ? AND id = ?",
                 (row["world_id"], row["place"]),
             ).fetchone()
             place = None if found is None else found["name"]
+            buildings = [
+                building_out(item, language)
+                for item in _rows(
+                    conn,
+                    "SELECT * FROM buildings WHERE world_id = ? AND place_id = ? ORDER BY id",
+                    (row["world_id"], row["place"]),
+                )
+            ]
         techs = _rows(
             conn,
             "SELECT technology, tick, how FROM discoveries WHERE world_id = ? AND group_id = ? "
@@ -248,6 +303,7 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             "x": row["x"],
             "settled": bool(row["settled"]),
             "place": place,
+            "buildings": buildings,
             "parent_group": row["parent_group"],
             "founded_year": row["founded"] // 360,
             "dissolved_year": None if row["dissolved"] is None else row["dissolved"] // 360,
@@ -604,7 +660,9 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
     app.include_router(api)
 
     if (WEB_DIR / "index.html").is_file():
-        app.mount("/assets", StaticFiles(directory=WEB_DIR / "assets"), name="assets")
+        for folder in ("assets", "sprites"):
+            if (WEB_DIR / folder).is_dir():
+                app.mount(f"/{folder}", StaticFiles(directory=WEB_DIR / folder), name=folder)
 
         @app.get("/", include_in_schema=False)
         def index() -> FileResponse:

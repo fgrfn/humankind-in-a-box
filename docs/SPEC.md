@@ -317,51 +317,49 @@ Alle Sprites einschließlich Gelände werden per Bildgenerator entworfen (so mac
 
 **Stil.** Isometrisch 2:1. Kachel 64 × 32 Pixel, Figuren etwa 24 Pixel hoch, Gebäude ein bis zwei Kacheln breit. Feste Palette mit 32 Farben, weiche Erdtöne, kein Schwarz als Kontur. Gebäude hängen an Technologien, nicht an Epochen.
 
-**Pipeline (Python, Pillow), Skripte im Repo unter `tools/`:**
+**Pipeline (Python, Pillow), umgesetzt in `tools/build_atlas.py`:**
 
-1. Bogen mit Stil-Prompt erzeugen, immer zusammen mit dem ersten freigegebenen Bogen als Referenzbild. Rohbögen nach `art/sheets/`.
-2. Zellen erkennen, Hintergrund entfernen, per Nearest-Neighbor auf Zielgröße skalieren.
-3. Farben auf die 32er-Palette zwingen, Einzelpixel-Rauschen entfernen.
-4. Atlas-PNG plus JSON mit Koordinaten packen, beides committen (Build braucht dann kein Python-Bildwerkzeug).
+1. Bogen mit Stil-Prompt erzeugen, immer zusammen mit einem schon freigegebenen Bogen als Referenzbild. Rohbögen nach `art/sheets/`, Namen der Bilder je Bogen in `art/manifest.yaml`.
+2. Das Skript findet die Bilder selbst (transparenter Hintergrund), misst bei jedem die Bodenraute aus und skaliert mit Flächenmittel auf die Zielgröße.
+3. Geländekacheln: nur das Innere der Oberseite wird auf eine exakte Raute von 64 × 32 gezogen, Kontur und Erdrand fallen weg. So schließen Kacheln nahtlos an.
+4. Objekte: Kontur und Erdrand des Bodenstücks fallen weg, der blanke Boden blendet zum Rand hin aus, was darauf steht, bleibt.
+5. Atlas-PNG plus JSON nach `frontend/public/sprites/`, beides committen (der Build braucht dann kein Python-Bildwerkzeug).
 
-**Stil-Prompt (immer voranstellen):**
+`uv run python tools/build_atlas.py`, danach das Frontend neu bauen.
+
+**Erprobt (drei Bögen, November 2026):** Acht Bilder je Bogen in zwei Reihen zu vier funktionieren zuverlässig, sechzehn nicht. Transparenter Hintergrund funktioniert und ist besser als Magenta. Der Generator hält kein exaktes Pixelraster ein, deshalb misst das Skript und verlässt sich auf keine festen Zellgrößen. Objekte kommen immer auf einem Bodenstück, das ist in Ordnung, das Skript entfernt es.
+
+**Stil-Prompt (immer voranstellen, einen freigegebenen Bogen als Referenzbild anhängen):**
 
 ```text
-Pixel art sprite sheet for an isometric colony simulation game.
+Pixel art sprite sheet for an isometric colony simulation game, in exactly the style of the attached reference sheet.
 Style: clean 16-bit era pixel art, isometric 2:1 dimetric view, flat even lighting from the top left,
-no gradients, no anti-aliasing, no dithering, crisp hard pixel edges.
-Palette: at most 32 colours, warm earthy tones (moss green, clay, ochre, slate, off-white),
-dark brown outlines instead of black, 1 pixel outline.
-Layout: strict grid of equal square cells, 8 columns, generous spacing between cells,
-one object per cell, centred, each object fully inside its cell.
-Background: solid flat magenta (#FF00FF), nothing else in the background, no shadows on the background.
+no gradients, no anti-aliasing, crisp hard pixel edges, large readable pixels.
+Palette: warm earthy tones (moss green, clay, ochre, slate, off-white), dark brown outlines instead of black.
+Layout: exactly 8 pictures in 2 rows of 4, evenly spaced, generous empty space between them,
+one subject per cell, centred, nothing touching or overlapping a neighbour.
+Every subject stands on a small isometric diamond of ground (2:1 ratio) with a thin earth edge below,
+the same size as in the reference sheet.
+Background: fully transparent, nothing else in the background, no shadows outside the ground diamond.
 No text, no labels, no numbers, no frame, no watermark, no UI.
-Keep proportions and line weight identical across all cells.
+Keep scale, proportions and line weight identical across all cells and identical to the reference.
 ```
 
 **Bogen-Prompts (jeweils anhängen):**
 
 ```text
-SHEET 1, people, stone age: 16 tiny villagers, about 16 pixels tall, simple readable silhouettes.
-Row 1: adult woman and adult man in hides, each facing the four diagonal isometric directions.
-Row 2: child, elder with staff, hunter with spear, gatherer with basket, each facing front-left and front-right.
+BUILDINGS 1, stone age, each on a bare trodden-earth ground diamond, each at most as wide as its diamond:
+1 campfire ringed with stones, burning. 2 hide tent. 3 round hut with thatched roof and a dark doorway.
+4 wooden drying rack with strips of meat and fish. 5 storage pit covered with branches and hides.
+6 small clay kiln with a little smoke. 7 construction site: wooden posts, a pile of logs, no roof yet.
+8 ruin: collapsed hut, a few rotten posts, overgrown.
 
-SHEET 2, stone age buildings and objects, each about 32 pixels: hide tent, lean-to shelter,
-round hut with thatched roof, campfire, drying rack, stone circle, burial mound, storage pit,
-dugout canoe, totem pole, flint workshop, small field with sprouts, animal pen, well, palisade segment, gate.
+PEOPLE 1, stone age, tiny figures about a quarter as tall as an oak tree in the reference, simple readable silhouettes,
+each standing on a grass ground diamond: 1 woman in hides. 2 man in hides. 3 child. 4 elder with staff.
+5 hunter with spear. 6 gatherer with basket. 7 fisher with a fish on a line. 8 group of three people walking with bundles.
 
-SHEET 3, animals, about 16 pixels: deer, boar, wolf, bear, mammoth, rabbit, fish, bird,
-sheep, goat, cow, dog, horse, chicken, each in side view facing right.
-
-SHEET 4, nature objects, about 16 to 32 pixels: oak tree, pine tree, birch tree, dead tree,
-bush, berry bush, reeds, boulder, ore rock with copper veins, ore rock with iron veins,
-flowers, mushrooms, tree stump, snow-covered pine, snow-covered oak, snow-covered boulder.
-
-SHEET 5, terrain tiles, each cell one isometric diamond ground tile (2:1 ratio) with a thin earth edge below, centred in its cell,
-no objects on it, texture kept low-contrast so tiles repeat without visible seams:
-grass, dry grass, forest floor, dirt, sand, gravel, rock, mountain rock,
-snow, ice, marsh, mud, shallow water, deep water, farmland soil, trodden path.
-Three slight variations of each tile, in adjacent cells.
+ANIMALS 1, each on a grass ground diamond: deer, boar, wolf, bear, mammoth, aurochs, wild horse, bird of prey,
+each in side view facing right. (Second sheet later: sheep, goat, cow, dog, horse, chicken, rabbit, fish.)
 ```
 
 ## 16. Bauplan

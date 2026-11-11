@@ -18,6 +18,9 @@ def render_event(packs: PackSet, event_type: str, data: dict[str, Any], language
     technology = packs.technologies.get(str(data.get("tech")))
     if technology is not None:
         values["tech"] = getattr(technology.name, language)
+    building = packs.buildings.get(str(data.get("building")))
+    if building is not None:
+        values["building"] = getattr(building.name, language)
     text: str = getattr(definition.text, language)
     for key in sorted(values):
         text = text.replace("{" + key + "}", values[key])

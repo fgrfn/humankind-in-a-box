@@ -49,7 +49,7 @@ CLAN_FACTS = (
     "cold",
     "settled",
 )
-SECTIONS = ("resources", "events", "rules", "technologies")
+SECTIONS = ("resources", "events", "rules", "technologies", "buildings")
 
 
 class PackError(Exception):
@@ -119,6 +119,17 @@ class Technology(_Model):
     effects: TechEffects = Field(default_factory=TechEffects)
 
 
+class Building(_Model):
+    name: Text
+    requires: list[str] = Field(default_factory=list)
+    materials: dict[str, int] = Field(default_factory=dict)  # stock resource -> units
+    work: int = Field(ge=1, le=100000)  # adult-months
+    houses: int = Field(0, ge=0, le=1000)  # people one of these gives a home to
+    per_people: int = Field(0, ge=0, le=100000)  # one more of these per this many people
+    storage_months: int = Field(0, ge=0, le=60)
+    mortality_percent: int = Field(100, ge=10, le=200)
+
+
 class LifeParams(_Model):
     start_families: int = Field(ge=1, le=200)
     adult_age: int = Field(ge=10, le=30)
@@ -149,6 +160,14 @@ class LifeParams(_Model):
     contact_learning_chance_per_year: float = Field(ge=0.0, le=1.0)
     settle_years: int = Field(ge=1, le=1000)
     settle_chance_per_year: float = Field(ge=0.0, le=1.0)
+    settled_forage_bonus: int = Field(1, ge=0, le=3)
+    abandon_hunger_percent: int = Field(25, ge=1, le=100)
+    abandon_chance_per_year: float = Field(0.3, ge=0.0, le=1.0)
+    steps_decay_percent_per_year: int = Field(8, ge=0, le=100)
+    path_trail_steps: int = Field(250, ge=1)
+    path_road_steps: int = Field(1000, ge=1)
+    build_start_chance_per_month: float = Field(0.25, ge=0.0, le=1.0)
+    ruin_chance_per_year: float = Field(0.15, ge=0.0, le=1.0)
 
 
 class PackSet(_Model):
@@ -160,6 +179,7 @@ class PackSet(_Model):
     events: dict[str, EventType]
     rules: dict[str, Rule]
     technologies: dict[str, Technology] = Field(default_factory=dict)
+    buildings: dict[str, Building] = Field(default_factory=dict)
     life: LifeParams | None = None  # without it the world has no people
 
     def foods(self) -> list[str]:
@@ -276,6 +296,19 @@ def _cross_check(pack: PackSet) -> list[str]:
         for res_id in sorted(tech.effects.harvest_percent):
             if res_id not in stocks:
                 problems.append(f"{where}.effects.harvest_percent: '{res_id}' is not a stock")
+    for building_id in sorted(pack.buildings):
+        building = pack.buildings[building_id]
+        where = f"buildings.{building_id}"
+        for required in building.requires:
+            if required not in pack.technologies:
+                problems.append(f"{where}.requires: unknown technology '{required}'")
+        for res_id in sorted(building.materials):
+            if res_id not in stocks:
+                problems.append(f"{where}.materials: '{res_id}' is not a stock resource")
+        if building.houses == 0 and building.per_people == 0:
+            problems.append(
+                f"{where}: needs either 'houses' or 'per_people' to say how many are wanted"
+            )
     if pack.life is not None and not pack.foods():
         problems.append("life: people need at least one stock resource with food_value > 0")
     return problems
@@ -340,6 +373,7 @@ def load_packs(names: list[str], data_dir: Path | None = None) -> PackSet:
             "events": len(pack.events),
             "rules": len(pack.rules),
             "technologies": len(pack.technologies),
+            "buildings": len(pack.buildings),
             "people": pack.life is not None,
         },
     )

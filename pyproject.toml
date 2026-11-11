@@ -20,7 +20,14 @@ dependencies = [
 hiab = "hiab.cli:main"
 
 [dependency-groups]
-dev = ["httpx>=0.27", "pytest>=8", "ruff>=0.7", "mypy>=1.13", "types-PyYAML"]
+dev = [
+    "httpx>=0.27",
+    "pytest>=8",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "types-PyYAML",
+    "pillow>=13.0.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hiab"]

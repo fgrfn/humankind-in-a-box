@@ -24,7 +24,10 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     local = settings.data_dir / "packs" / "local"
     local.mkdir(parents=True)
     (local / "overrides.yaml").write_text(
-        "technologies.fire.base_chance_per_year: 0.2\n", encoding="utf-8"
+        "technologies.fire.base_chance_per_year: 0.2\n"
+        "technologies.shelter.base_chance_per_year: 0.05\n"
+        "technologies.shelter.requires: []\n",
+        encoding="utf-8",
     )
     path = root / "w.sqlite"
     simulate(path, settings, 60, 9)
@@ -129,3 +132,27 @@ def test_openapi_is_served(client: TestClient) -> None:
     paths = client.get("/api/openapi.json").json()["paths"]
     assert "/api/v1/worlds/{world_id}/stats" in paths
     assert Path(__file__).exists()
+
+
+def test_places_list_what_was_built(client: TestClient) -> None:
+    levels = client.get("/api/v1/worlds/1/map").json()["path_levels"]
+    assert 0 < levels["trail"] < levels["road"]
+    places = client.get("/api/v1/worlds/1/places").json()
+    assert places, "somebody settles within 60 years in this fixture"
+    buildings = [b for place in places for b in place["buildings"]]
+    assert buildings
+    assert {b["state"] for b in buildings} <= {"site", "standing", "ruin"}
+    assert all(0 <= b["progress_percent"] <= 100 for b in buildings)
+    english = client.get("/api/v1/worlds/1/places", params={"lang": "en"}).json()
+    names = {b["name"] for place in english for b in place["buildings"]}
+    assert names <= {"Gathering fire", "Hut", "Drying rack", "Storage pit", "Kiln"}
+    lived_in = next(place for place in places if place["abandoned_year"] is None)
+    group = client.get(f"/api/v1/worlds/1/groups/{lived_in['group_id']}").json()
+    assert [b["id"] for b in group["buildings"]] == [b["id"] for b in lived_in["buildings"]]
+
+
+def test_frontend_and_sprites_are_served(client: TestClient) -> None:
+    assert client.get("/").status_code == 200
+    atlas = client.get("/sprites/atlas.json").json()
+    assert {"grass", "deep_water", "oak", "path"} <= set(atlas["frames"])
+    assert client.get("/sprites/atlas.png").headers["content-type"] == "image/png"
