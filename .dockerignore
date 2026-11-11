@@ -1,0 +1,6 @@
+.git
+.venv
+frontend/node_modules
+tests
+docs
+*.sqlite*
