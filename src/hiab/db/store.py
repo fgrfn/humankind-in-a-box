@@ -18,6 +18,7 @@ import numpy as np
 from hiab.logging_setup import get_logger
 from hiab.packs import BIOMES, PackSet
 from hiab.sim.engine import DAYS_PER_YEAR, World
+from hiab.sim.people import Person
 from hiab.sim.worldgen import WorldMap
 
 log = get_logger("store")
@@ -112,6 +113,69 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (world_id, seq)
     ) WITHOUT ROWID;
     """,
+    """
+    CREATE TABLE persons (
+        world_id INTEGER NOT NULL,
+        id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        sex INTEGER NOT NULL,
+        born INTEGER NOT NULL,
+        died INTEGER,
+        cause TEXT,
+        mother INTEGER NOT NULL,
+        father INTEGER NOT NULL,
+        family INTEGER NOT NULL,
+        clan INTEGER NOT NULL,
+        partner INTEGER NOT NULL,
+        traits TEXT NOT NULL,
+        children INTEGER NOT NULL,
+        last_birth INTEGER NOT NULL,
+        moved INTEGER NOT NULL,
+        discoveries INTEGER NOT NULL,
+        PRIMARY KEY (world_id, id)
+    ) WITHOUT ROWID;
+    CREATE INDEX persons_living ON persons (world_id, died, clan);
+    CREATE TABLE groups (
+        world_id INTEGER NOT NULL,
+        id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        parent_group INTEGER NOT NULL,
+        founded INTEGER NOT NULL,
+        dissolved INTEGER,
+        y INTEGER NOT NULL,
+        x INTEGER NOT NULL,
+        settled INTEGER NOT NULL,
+        place INTEGER NOT NULL,
+        PRIMARY KEY (world_id, id)
+    ) WITHOUT ROWID;
+    CREATE TABLE discoveries (
+        world_id INTEGER NOT NULL,
+        group_id INTEGER NOT NULL,
+        technology TEXT NOT NULL,
+        tick INTEGER NOT NULL,
+        discoverer INTEGER NOT NULL,
+        how TEXT NOT NULL,
+        PRIMARY KEY (world_id, group_id, technology)
+    ) WITHOUT ROWID;
+    CREATE TABLE places (
+        world_id INTEGER NOT NULL,
+        id INTEGER NOT NULL,
+        y INTEGER NOT NULL,
+        x INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        founded INTEGER NOT NULL,
+        abandoned INTEGER,
+        group_id INTEGER NOT NULL,
+        PRIMARY KEY (world_id, id)
+    ) WITHOUT ROWID;
+    CREATE TABLE tile_layers (
+        world_id INTEGER NOT NULL,
+        layer TEXT NOT NULL,
+        data BLOB NOT NULL,
+        PRIMARY KEY (world_id, layer)
+    ) WITHOUT ROWID;
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -125,7 +189,16 @@ CONTENT_TABLES: dict[str, str] = {
     "metrics": "world_id, key, scope_type, scope_id, tick",
     "pack_versions": "world_id, tick, pack",
     "settings_log": "world_id, seq",
+    "persons": "world_id, id",
+    "groups": "world_id, id",
+    "discoveries": "world_id, group_id, technology",
+    "places": "world_id, id",
+    "tile_layers": "world_id, layer",
 }
+
+
+class WorldNotFound(Exception):
+    """The requested world is not in this database."""
 
 
 def _json(value: Any) -> str:
@@ -271,6 +344,7 @@ class Store:
                     for resource in world.stock_ids
                 ],
             )
+            self._save_society(world)
             self.conn.execute(
                 "INSERT OR REPLACE INTO world_state VALUES (?, ?)",
                 (world.id, _json(world.dump_state())),
@@ -288,6 +362,84 @@ class Store:
         )
         buffers.clear()
 
+    def _save_society(self, world: World) -> None:
+        society = world.society
+        if society is None:
+            return
+        person_rows = []
+        for person_id in sorted(society.dirty_persons):
+            person = society.persons.get(person_id) or society.dead[person_id]
+            person_rows.append(
+                (
+                    world.id,
+                    person.id,
+                    person.name,
+                    person.sex,
+                    person.born,
+                    person.died,
+                    person.cause,
+                    person.mother,
+                    person.father,
+                    person.family,
+                    person.clan,
+                    person.partner,
+                    _json(person.traits),
+                    person.children,
+                    person.last_birth,
+                    person.moved,
+                    person.discoveries,
+                )
+            )
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", person_rows
+        )
+        clan_rows = []
+        for clan_id in sorted(society.dirty_clans | set(society.retired)):
+            clan = society.clans.get(clan_id) or society.retired[clan_id]
+            clan_rows.append(
+                (
+                    world.id,
+                    clan.id,
+                    "settlement" if clan.settled else "clan",
+                    clan.name,
+                    clan.parent,
+                    clan.founded,
+                    clan.dissolved,
+                    clan.y,
+                    clan.x,
+                    int(clan.settled),
+                    clan.place,
+                )
+            )
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?)", clan_rows
+        )
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO discoveries VALUES (?,?,?,?,?,?)",
+            [(world.id, *row) for row in society.new_discoveries],
+        )
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO places VALUES (?,?,?,?,?,?,?,?)",
+            [
+                (
+                    world.id,
+                    place["id"],
+                    place["y"],
+                    place["x"],
+                    place["name"],
+                    place["founded"],
+                    place["abandoned"],
+                    place["group"],
+                )
+                for place in (society.places[pid] for pid in sorted(society.dirty_places))
+            ],
+        )
+        self.conn.execute(
+            "INSERT OR REPLACE INTO tile_layers VALUES (?, 'steps', ?)",
+            (world.id, society.steps.astype("<i4").tobytes()),
+        )
+        society.clear_dirty()
+
     def load_world(
         self, world_id: int, packs: PackSet, world_log_level: str = "decisions"
     ) -> World:
@@ -295,7 +447,7 @@ class Store:
             "SELECT seed, width, height, deposit_ids FROM worlds WHERE id = ?", (world_id,)
         ).fetchone()
         if row is None:
-            raise LookupError(f"World {world_id} does not exist in {self.path}")
+            raise WorldNotFound(f"World {world_id} does not exist in {self.path}")
         seed, width, height, deposit_json = row
         deposit_ids: list[str] = json.loads(deposit_json)
         shape = (height, width)
@@ -347,7 +499,42 @@ class Store:
         state = self.conn.execute(
             "SELECT state FROM world_state WHERE world_id = ?", (world_id,)
         ).fetchone()
-        world.load_state(json.loads(state[0]))
+        loaded = json.loads(state[0])
+        world.load_state(loaded)
+        if world.society is not None and loaded.get("society") is not None:
+            persons = [
+                Person(
+                    id=row[0],
+                    name=row[1],
+                    sex=row[2],
+                    born=row[3],
+                    mother=row[4],
+                    father=row[5],
+                    family=row[6],
+                    clan=row[7],
+                    partner=row[8],
+                    traits=json.loads(row[9]),
+                    children=row[10],
+                    last_birth=row[11],
+                    moved=row[12],
+                    discoveries=row[13],
+                )
+                for row in self.conn.execute(
+                    "SELECT id, name, sex, born, mother, father, family, clan, partner, traits, "
+                    "children, last_birth, moved, discoveries FROM persons "
+                    "WHERE world_id = ? AND died IS NULL ORDER BY id",
+                    (world_id,),
+                )
+            ]
+            layer = self.conn.execute(
+                "SELECT data FROM tile_layers WHERE world_id = ? AND layer = 'steps'", (world_id,)
+            ).fetchone()
+            steps = (
+                None
+                if layer is None
+                else np.frombuffer(layer[0], dtype="<i4").reshape(shape).astype(np.int32)
+            )
+            world.society.load_state(loaded["society"], persons, steps)
         return world
 
 

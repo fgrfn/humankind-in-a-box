@@ -1,0 +1,62 @@
+# Discoveries. A clan can find one when it knows everything in `requires`
+# and has everything in `needs_nearby` close to its camp.
+fire:
+  name: {de: Feuer, en: Fire}
+  base_chance_per_year: 0.00012
+  factors: {cold: 2.0, curious: 1.5, hungry: 1.3}
+  effects: {mortality_percent: 85, harvest_percent: {plants: 10, game: 10}}
+stone_tools:
+  name: {de: Steinwerkzeuge, en: Stone tools}
+  needs_nearby: [flint]
+  base_chance_per_year: 0.00012
+  factors: {crafty: 1.8, curious: 1.3}
+  effects: {harvest_percent: {plants: 15, game: 15}}
+spear:
+  name: {de: Speer, en: Spear}
+  requires: [stone_tools]
+  base_chance_per_year: 0.0001
+  factors: {hungry: 2.0, crafty: 1.4}
+  effects: {harvest_percent: {game: 40}}
+fishing:
+  name: {de: Fischfang, en: Fishing}
+  needs_nearby: [fish]
+  base_chance_per_year: 0.0001
+  factors: {hungry: 2.5, coastal: 1.5, curious: 1.3}
+  effects: {harvest_percent: {fish: 50}}
+cordage:
+  name: {de: Schnüre und Körbe, en: Cordage and baskets}
+  base_chance_per_year: 6e-05
+  factors: {crafty: 2.0, large: 1.3}
+  effects: {harvest_percent: {plants: 20, fish: 20}}
+shelter:
+  name: {de: Feste Hütten, en: Sturdy huts}
+  requires: [stone_tools]
+  needs_nearby: [wood]
+  base_chance_per_year: 6e-05
+  factors: {cold: 2.0, large: 1.5, crafty: 1.3}
+  effects: {mortality_percent: 90, enables_settlement: true}
+hide_clothing:
+  name: {de: Fellkleidung, en: Hide clothing}
+  requires: [stone_tools]
+  base_chance_per_year: 0.0001
+  factors: {cold: 3.0, "has:spear": 1.5}
+  effects: {mortality_percent: 92}
+food_drying:
+  name: {de: Trocknen von Vorräten, en: Food drying}
+  requires: [fire]
+  base_chance_per_year: 6e-05
+  factors: {hungry: 2.0, "has:fishing": 1.5, large: 1.3}
+  effects: {storage_months: 3}
+pottery:
+  name: {de: Töpferei, en: Pottery}
+  requires: [fire]
+  needs_nearby: [clay]
+  base_chance_per_year: 5e-05
+  factors: {settled: 3.0, crafty: 1.8}
+  effects: {storage_months: 3}
+dog:
+  name: {de: Hund als Begleiter, en: Dog companion}
+  requires: [spear]
+  base_chance_per_year: 3e-05
+  factors: {well_fed: 2.0, large: 1.3}
+  effects: {harvest_percent: {game: 25}, mortality_percent: 97}

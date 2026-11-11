@@ -1,27 +1,39 @@
 # Stocks renew on their own. Capacity is per tile of a biome, 0..1000.
+plants:
+  kind: stock
+  name: {de: Wildpflanzen, en: Wild plants}
+  food_value: 1
+  harvest_base_percent: 100
+  capacity: {forest: 600, grassland: 550, marsh: 500, steppe: 300, taiga: 250, tundra: 80, mountain: 100, desert: 30}
+  regrowth_percent_per_month: 12
+  season_percent: {spring: 140, summer: 150, autumn: 110, winter: 10}
 game:
   kind: stock
   name: {de: Wild, en: Game}
+  food_value: 1
+  harvest_base_percent: 35
   capacity: {tundra: 250, taiga: 500, forest: 800, grassland: 700, steppe: 450, marsh: 400, mountain: 200, desert: 60}
-  regrowth_percent_per_month: 6
+  regrowth_percent_per_month: 10
   season_percent: {spring: 150, summer: 110, autumn: 70, winter: 20}
 fish:
   kind: stock
   name: {de: Fisch, en: Fish}
+  food_value: 1
+  harvest_base_percent: 0
   capacity: {coast: 800, river: 700, marsh: 350, ocean: 300}
-  regrowth_percent_per_month: 8
+  regrowth_percent_per_month: 10
   season_percent: {spring: 130, summer: 120, autumn: 90, winter: 50}
 wood:
   kind: stock
   name: {de: Holz, en: Wood}
   capacity: {taiga: 800, forest: 1000, grassland: 150, marsh: 300, steppe: 60, tundra: 40, mountain: 200}
-  regrowth_percent_per_month: 1
+  regrowth_percent_per_month: 2
   season_percent: {spring: 140, summer: 140, autumn: 60, winter: 0}
 soil:
   kind: stock
   name: {de: Bodenfruchtbarkeit, en: Soil fertility}
   capacity: {grassland: 900, forest: 700, marsh: 800, steppe: 450, taiga: 300, tundra: 100, desert: 50, mountain: 120}
-  regrowth_percent_per_month: 2
+  regrowth_percent_per_month: 4
   season_percent: {spring: 120, summer: 100, autumn: 100, winter: 40}
 
 # Deposits are placed once when the world is generated.
