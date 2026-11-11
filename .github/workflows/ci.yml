@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+      - name: Reference world digest
+        shell: bash
+        run: |
+          uv run hiab simulate --years 500 --seed 42 --out ref.sqlite --log-level WARNING
+          uv run python -c "from pathlib import Path; from hiab.db.store import table_digests; import json; print(json.dumps(table_digests(Path('ref.sqlite')), indent=1))" > digest-${{ matrix.os }}.json
+          cat digest-${{ matrix.os }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.os }}
+          path: digest-${{ matrix.os }}.json
+
+  same-world-everywhere:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Compare digests across operating systems
+        run: |
+          diff --strip-trailing-cr digest-ubuntu-latest.json digest-windows-latest.json
+          diff --strip-trailing-cr digest-ubuntu-latest.json digest-macos-latest.json
+          echo "The seed 42 world is identical on Linux, Windows and macOS."

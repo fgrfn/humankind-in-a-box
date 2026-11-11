@@ -1,0 +1,51 @@
+# Stocks renew on their own. Capacity is per tile of a biome, 0..1000.
+game:
+  kind: stock
+  name: {de: Wild, en: Game}
+  capacity: {tundra: 250, taiga: 500, forest: 800, grassland: 700, steppe: 450, marsh: 400, mountain: 200, desert: 60}
+  regrowth_percent_per_month: 6
+  season_percent: {spring: 150, summer: 110, autumn: 70, winter: 20}
+fish:
+  kind: stock
+  name: {de: Fisch, en: Fish}
+  capacity: {coast: 800, river: 700, marsh: 350, ocean: 300}
+  regrowth_percent_per_month: 8
+  season_percent: {spring: 130, summer: 120, autumn: 90, winter: 50}
+wood:
+  kind: stock
+  name: {de: Holz, en: Wood}
+  capacity: {taiga: 800, forest: 1000, grassland: 150, marsh: 300, steppe: 60, tundra: 40, mountain: 200}
+  regrowth_percent_per_month: 1
+  season_percent: {spring: 140, summer: 140, autumn: 60, winter: 0}
+soil:
+  kind: stock
+  name: {de: Bodenfruchtbarkeit, en: Soil fertility}
+  capacity: {grassland: 900, forest: 700, marsh: 800, steppe: 450, taiga: 300, tundra: 100, desert: 50, mountain: 120}
+  regrowth_percent_per_month: 2
+  season_percent: {spring: 120, summer: 100, autumn: 100, winter: 40}
+
+# Deposits are placed once when the world is generated.
+flint:
+  kind: deposit
+  name: {de: Feuerstein, en: Flint}
+  occurrence_permille: {mountain: 60, steppe: 25, grassland: 15, forest: 10, tundra: 15}
+clay:
+  kind: deposit
+  name: {de: Lehm, en: Clay}
+  occurrence_permille: {marsh: 80, grassland: 30, forest: 15, steppe: 15}
+copper_ore:
+  kind: deposit
+  name: {de: Kupfererz, en: Copper ore}
+  occurrence_permille: {mountain: 35, steppe: 5}
+tin_ore:
+  kind: deposit
+  name: {de: Zinnerz, en: Tin ore}
+  occurrence_permille: {mountain: 12}
+iron_ore:
+  kind: deposit
+  name: {de: Eisenerz, en: Iron ore}
+  occurrence_permille: {mountain: 40, taiga: 8, marsh: 10}
+salt:
+  kind: deposit
+  name: {de: Salz, en: Salt}
+  occurrence_permille: {desert: 50, steppe: 15, mountain: 10}

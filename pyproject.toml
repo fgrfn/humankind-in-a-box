@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "humankind-in-a-box"
+version = "0.0.1"
+description = "A self-hosted idle civilization that lives in a box on your server. You just watch it grow."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.1",
+    "pydantic>=2.9",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+hiab = "hiab.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.7", "mypy>=1.13", "types-PyYAML"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hiab"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: long deterministic runs"]
+
+[tool.mypy]
+python_version = "3.13"
+packages = ["hiab"]
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+disallow_untyped_defs = true

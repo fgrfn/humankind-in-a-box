@@ -1,0 +1,45 @@
+drought:
+  importance: 3
+  text:
+    de: "Dürre in {region}: Das Land trocknet aus, Wild und Boden leiden."
+    en: "Drought in {region}: the land dries out, game and soil suffer."
+harsh_winter:
+  importance: 3
+  text:
+    de: "Ein harter Winter trifft {region}. Viel Wild überlebt ihn nicht."
+    en: "A harsh winter hits {region}. Much of the game does not survive."
+wildfire:
+  importance: 2
+  text:
+    de: "Ein Waldbrand zieht durch {region}."
+    en: "A wildfire sweeps through {region}."
+flood:
+  importance: 2
+  text:
+    de: "Die Flüsse treten in {region} über die Ufer und hinterlassen fruchtbaren Schlamm."
+    en: "The rivers of {region} burst their banks and leave fertile silt behind."
+fish_boom:
+  importance: 1
+  text:
+    de: "Die Gewässer von {region} sind in diesem Jahr voller Fisch."
+    en: "The waters of {region} are teeming with fish this year."
+mild_year:
+  importance: 1
+  text:
+    de: "Ein mildes, reiches Jahr in {region}."
+    en: "A mild and plentiful year in {region}."
+warm_phase_begins:
+  importance: 4
+  text:
+    de: "Eine Warmzeit beginnt. Die Sommer werden länger."
+    en: "A warm period begins. Summers grow longer."
+cold_phase_begins:
+  importance: 4
+  text:
+    de: "Eine Kaltzeit beginnt. Die Winter werden strenger."
+    en: "A cold period begins. Winters grow harsher."
+climate_normalises:
+  importance: 2
+  text:
+    de: "Das Klima kehrt zu gewohnten Verhältnissen zurück."
+    en: "The climate returns to familiar conditions."

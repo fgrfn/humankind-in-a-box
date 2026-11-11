@@ -1,0 +1,57 @@
+# Chances are starting values and will be calibrated.
+# Months: 1-3 spring, 4-6 summer, 7-9 autumn, 10-12 winter.
+drought:
+  scope: region
+  month: 5
+  base_chance_per_year: 0.04
+  factors: {arid: 2.5, hot: 1.5, warm_phase: 1.6, wet: 0.4, "recent:drought": 1.5}
+  event: drought
+  effects:
+    - {type: stock_loss, resources: [game], percent: 30}
+    - {type: regrowth_modifier, resources: [game, soil], percent: 40, months: 12}
+harsh_winter:
+  scope: region
+  month: 11
+  base_chance_per_year: 0.05
+  factors: {cold: 2.0, cold_phase: 2.0, hot: 0.2, warm_phase: 0.5, mountainous: 1.3}
+  event: harsh_winter
+  effects:
+    - {type: stock_loss, resources: [game], percent: 40}
+    - {type: stock_loss, resources: [fish], percent: 15}
+wildfire:
+  scope: region
+  month: 6
+  requires: [forested]
+  base_chance_per_year: 0.02
+  factors: {"recent:drought": 4.0, hot: 1.5, wet: 0.5}
+  event: wildfire
+  effects:
+    - {type: stock_loss, resources: [wood], percent: 35}
+    - {type: stock_loss, resources: [game], percent: 20}
+    - {type: stock_gain, resources: [soil], percent: 10}
+flood:
+  scope: region
+  month: 2
+  base_chance_per_year: 0.03
+  factors: {wet: 2.5, coastal: 1.3, arid: 0.3, "recent:harsh_winter": 1.5}
+  event: flood
+  effects:
+    - {type: stock_loss, resources: [game], percent: 10}
+    - {type: stock_gain, resources: [soil], percent: 15}
+fish_boom:
+  scope: region
+  month: 4
+  requires: [coastal]
+  base_chance_per_year: 0.06
+  factors: {warm_phase: 1.3, "recent:harsh_winter": 0.5}
+  event: fish_boom
+  effects:
+    - {type: regrowth_modifier, resources: [fish], percent: 200, months: 12}
+mild_year:
+  scope: region
+  month: 3
+  base_chance_per_year: 0.08
+  factors: {"recent:drought": 0.3, "recent:harsh_winter": 0.3, cold_phase: 0.6}
+  event: mild_year
+  effects:
+    - {type: regrowth_modifier, resources: [game, soil], percent: 150, months: 12}
