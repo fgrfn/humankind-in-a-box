@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 
 from hiab.packs import BIOMES, SEASONS, PackSet, Rule
+from hiab.sim.people import Society
 from hiab.sim.rng import RandomStreams
 from hiab.sim.worldgen import WorldMap, generate_world, region_static_facts
 
@@ -75,6 +76,7 @@ class World:
         self.stock_ids = packs.stocks()
         self.capacity = {rid: self._capacity_grid(rid) for rid in self.stock_ids}
         self.stocks = {rid: self.capacity[rid].copy() for rid in self.stock_ids}
+        self.society = Society(self, packs.life) if packs.life is not None else None
 
     # ---- construction -------------------------------------------------
 
@@ -93,6 +95,8 @@ class World:
         world_map = generate_world(streams.get("worldgen"), width, height, land_share, packs)
         world = cls(world_id, seed, packs, world_map, world_log_level)
         world.streams = streams
+        if world.society is not None:
+            world.society.found()
         return world
 
     def _capacity_grid(self, resource_id: str) -> np.ndarray:
@@ -120,7 +124,10 @@ class World:
         scope_id: int,
         base_chance: float,
         factors: list[tuple[str, float]],
+        detail: bool = False,
     ) -> bool:
+        """Roll against a chance. ``detail`` rolls (one per person and year) are always
+        counted but only logged when the world log is set to ``full``."""
         chance = base_chance
         for _name, factor in factors:
             chance *= factor
@@ -131,7 +138,8 @@ class World:
         self.count(f"rule.{rule_id}.chance_sum", chance)
         if fired:
             self.count(f"rule.{rule_id}.fired")
-        if self.world_log_level != "chronicle":
+        logged = self.world_log_level == "full" if detail else self.world_log_level != "chronicle"
+        if logged:
             self.buffers.world_log.append(
                 (
                     self.log_seq,
@@ -196,8 +204,11 @@ class World:
                 self._flush_year_metrics()
             self._climate()
         if tick % DAYS_PER_MONTH == 0:
-            self._monthly_rules((tick % DAYS_PER_YEAR) // DAYS_PER_MONTH + 1)
+            month = (tick % DAYS_PER_YEAR) // DAYS_PER_MONTH
+            self._monthly_rules(month + 1)
             self._ecology()
+            if self.society is not None:
+                self.society.month(month)
         self.tick = tick + 1
 
     def _climate(self) -> None:
@@ -271,7 +282,11 @@ class World:
                     modifier[region] = (modifier[region] * percent) // 100
             stock = self.stocks[resource].astype(np.int64)
             capacity = self.capacity[resource].astype(np.int64)
-            growth = ((capacity - stock) * rate * modifier[self.map.region]) // 1_000_000
+            # Logistic regrowth: a healthy stock recovers fastest, an exhausted one
+            # only slowly, so overuse has lasting consequences.
+            gap = capacity - stock
+            base = stock * gap // np.maximum(capacity, 1) + gap // 20
+            growth = (base * rate * modifier[self.map.region]) // 1_000_000
             self.stocks[resource] = np.minimum(capacity, stock + growth).astype(np.int32)
 
     def _flush_year_metrics(self) -> None:
@@ -281,6 +296,8 @@ class World:
             rows.append((tick, key, "world", 0, self.counters[key]))
         self.counters.clear()
         rows.append((tick, "climate.anomaly", "world", 0, float(self.climate_anomaly)))
+        if self.society is not None:
+            self.society.year_metrics(rows, tick)
         region_ids = self.map.region.ravel()
         for resource in self.stock_ids:
             sums = np.zeros(self.map.region_count, dtype=np.int64)
@@ -315,6 +332,7 @@ class World:
             "modifiers": [list(m) for m in self.modifiers],
             "counters": dict(sorted(self.counters.items())),
             "streams": self.streams.dump(),
+            "society": None if self.society is None else self.society.dump_state(),
         }
 
     def load_state(self, state: dict[str, Any]) -> None:

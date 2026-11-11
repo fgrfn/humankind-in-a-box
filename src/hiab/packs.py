@@ -38,7 +38,18 @@ BIOMES = (
 SEASONS = ("spring", "summer", "autumn", "winter")
 STATIC_FACTS = ("arid", "wet", "cold", "hot", "coastal", "mountainous", "forested")
 DYNAMIC_FACTS = ("warm_phase", "cold_phase")
-SECTIONS = ("resources", "events", "rules")
+CLAN_FACTS = (
+    "hungry",
+    "well_fed",
+    "large",
+    "small",
+    "curious",
+    "crafty",
+    "coastal",
+    "cold",
+    "settled",
+)
+SECTIONS = ("resources", "events", "rules", "technologies")
 
 
 class PackError(Exception):
@@ -61,6 +72,10 @@ class Resource(_Model):
     capacity: dict[str, int] = Field(default_factory=dict)
     regrowth_percent_per_month: int = Field(0, ge=0, le=100)
     season_percent: dict[str, int] = Field(default_factory=dict)
+    # stock that people can eat: food per harvested unit, and how much of the
+    # harvestable amount people get without any knowledge (percent)
+    food_value: int = Field(0, ge=0, le=100)
+    harvest_base_percent: int = Field(0, ge=0, le=300)
     # deposit: chance per land tile of that biome, in permille
     occurrence_permille: dict[str, int] = Field(default_factory=dict)
 
@@ -88,6 +103,54 @@ class Rule(_Model):
     effects: list[Effect] = Field(default_factory=list)
 
 
+class TechEffects(_Model):
+    harvest_percent: dict[str, int] = Field(default_factory=dict)  # added to the base percent
+    mortality_percent: int = Field(100, ge=10, le=200)  # multiplies every death chance
+    storage_months: int = Field(0, ge=0, le=60)  # added to the months of food a clan can keep
+    enables_settlement: bool = False
+
+
+class Technology(_Model):
+    name: Text
+    requires: list[str] = Field(default_factory=list)
+    needs_nearby: list[str] = Field(default_factory=list)
+    base_chance_per_year: float = Field(ge=0.0, le=1.0)
+    factors: dict[str, float] = Field(default_factory=dict)
+    effects: TechEffects = Field(default_factory=TechEffects)
+
+
+class LifeParams(_Model):
+    start_families: int = Field(ge=1, le=200)
+    adult_age: int = Field(ge=10, le=30)
+    elder_age: int = Field(ge=30, le=90)
+    max_fertile_age: int = Field(ge=20, le=60)
+    birth_spacing_years: int = Field(ge=1, le=10)
+    birth_chance_per_year: float = Field(ge=0.0, le=1.0)
+    pairing_chance_per_year: float = Field(ge=0.0, le=1.0)
+    death_chance_infant: float = Field(ge=0.0, le=1.0)
+    death_chance_child: float = Field(ge=0.0, le=1.0)
+    death_chance_adult: float = Field(ge=0.0, le=1.0)
+    death_chance_elder: float = Field(ge=0.0, le=1.0)
+    elder_extra_per_year: float = Field(ge=0.0, le=1.0)
+    hunger_death_factor: float = Field(ge=0.0, le=100.0)
+    hunger_birth_factor: float = Field(ge=0.0, le=20.0)
+    food_need_per_person_month: int = Field(ge=1, le=1000)
+    child_need_percent: int = Field(ge=1, le=100)
+    harvest_per_adult_month: int = Field(ge=1, le=10000)
+    harvest_share_percent: int = Field(ge=1, le=100)
+    forage_radius: int = Field(ge=1, le=4)
+    storage_months: int = Field(ge=0, le=60)
+    move_radius: int = Field(ge=1, le=12)
+    wander_chance_per_month: float = Field(ge=0.0, le=1.0)
+    clan_split_adults: int = Field(ge=4, le=10000)
+    clan_split_chance_per_year: float = Field(ge=0.0, le=1.0)
+    clan_merge_adults: int = Field(ge=0, le=100)
+    contact_radius: int = Field(ge=1, le=64)
+    contact_learning_chance_per_year: float = Field(ge=0.0, le=1.0)
+    settle_years: int = Field(ge=1, le=1000)
+    settle_chance_per_year: float = Field(ge=0.0, le=1.0)
+
+
 class PackSet(_Model):
     """The merged, validated content a world runs on."""
 
@@ -96,6 +159,11 @@ class PackSet(_Model):
     resources: dict[str, Resource]
     events: dict[str, EventType]
     rules: dict[str, Rule]
+    technologies: dict[str, Technology] = Field(default_factory=dict)
+    life: LifeParams | None = None  # without it the world has no people
+
+    def foods(self) -> list[str]:
+        return [rid for rid in self.stocks() if self.resources[rid].food_value > 0]
 
     def stocks(self) -> list[str]:
         return [rid for rid in sorted(self.resources) if self.resources[rid].kind == "stock"]
@@ -134,10 +202,13 @@ def _apply_overrides(
 ) -> None:
     for dotted in sorted(overrides):
         parts = dotted.split(".")
-        if len(parts) < 3 or parts[0] not in SECTIONS:
+        valid = (len(parts) >= 3 and parts[0] in SECTIONS) or (
+            len(parts) == 2 and parts[0] == "life"
+        )
+        if not valid:
             raise PackError(
-                f"{source}: '{dotted}' must look like <section>.<id>.<field>, "
-                f"section one of {', '.join(SECTIONS)}"
+                f"{source}: '{dotted}' must look like <section>.<id>.<field> "
+                f"(section one of {', '.join(SECTIONS)}) or life.<field>"
             )
         node: Any = raw[parts[0]]
         for part in parts[1:-1]:
@@ -188,11 +259,30 @@ def _cross_check(pack: PackSet) -> list[str]:
                     problems.append(
                         f"rules.{rule_id}.effects[{index}]: '{res_id}' is not a stock resource"
                     )
+    clan_facts = CLAN_FACTS + tuple(f"has:{tid}" for tid in sorted(pack.technologies))
+    for tech_id in sorted(pack.technologies):
+        tech = pack.technologies[tech_id]
+        where = f"technologies.{tech_id}"
+        for required in tech.requires:
+            if required not in pack.technologies:
+                problems.append(f"{where}.requires: unknown technology '{required}'")
+        for needed in tech.needs_nearby:
+            if needed not in pack.resources:
+                problems.append(f"{where}.needs_nearby: unknown resource '{needed}'")
+        problems += _check_keys(f"{where}.factors", tech.factors, clan_facts, "fact")
+        for fact in sorted(tech.factors):
+            if tech.factors[fact] <= 0:
+                problems.append(f"{where}.factors.{fact}: must be greater than 0")
+        for res_id in sorted(tech.effects.harvest_percent):
+            if res_id not in stocks:
+                problems.append(f"{where}.effects.harvest_percent: '{res_id}' is not a stock")
+    if pack.life is not None and not pack.foods():
+        problems.append("life: people need at least one stock resource with food_value > 0")
     return problems
 
 
 def load_packs(names: list[str], data_dir: Path | None = None) -> PackSet:
-    raw: dict[str, dict[str, Any]] = {section: {} for section in SECTIONS}
+    raw: dict[str, Any] = {section: {} for section in SECTIONS}
     versions: dict[str, str] = {}
 
     for name in names:
@@ -209,6 +299,12 @@ def load_packs(names: list[str], data_dir: Path | None = None) -> PackSet:
             if not isinstance(content, dict):
                 raise PackError(f"{path}: must be a mapping of id to definition")
             raw[section].update(content)
+        life_path = folder / "life.yaml"
+        if life_path.is_file():
+            life = _read_yaml(life_path) or {}
+            if not isinstance(life, dict):
+                raise PackError(f"{life_path}: must be a mapping of setting to value")
+            raw["life"] = {**raw.get("life", {}), **life}
 
     if data_dir is not None:
         override_file = data_dir / "packs" / "local" / "overrides.yaml"
@@ -243,6 +339,8 @@ def load_packs(names: list[str], data_dir: Path | None = None) -> PackSet:
             "resources": len(pack.resources),
             "events": len(pack.events),
             "rules": len(pack.rules),
+            "technologies": len(pack.technologies),
+            "people": pack.life is not None,
         },
     )
     return pack

@@ -43,3 +43,73 @@ climate_normalises:
   text:
     de: "Das Klima kehrt zu gewohnten Verhältnissen zurück."
     en: "The climate returns to familiar conditions."
+humankind_begins:
+  importance: 5
+  text:
+    de: "Die ersten Familien lagern gemeinsam. Sie nennen sich {clan}."
+    en: "The first families camp together. They call themselves {clan}."
+humankind_extinct:
+  importance: 5
+  text:
+    de: "Der letzte Mensch ist gestorben. Die Welt ist wieder still."
+    en: "The last human has died. The world is silent again."
+birth:
+  importance: 1
+  text:
+    de: "{name} wird bei den {clan} geboren."
+    en: "{name} is born among the {clan}."
+death:
+  importance: 1
+  text:
+    de: "{name} von den {clan} stirbt im Alter von {age} Jahren."
+    en: "{name} of the {clan} dies at the age of {age}."
+pairing:
+  importance: 1
+  text:
+    de: "{name} und {partner} von den {clan} tun sich zusammen."
+    en: "{name} and {partner} of the {clan} become a couple."
+migration:
+  importance: 1
+  text:
+    de: "Die {clan} ziehen weiter."
+    en: "The {clan} move on."
+famine:
+  importance: 3
+  text:
+    de: "Die {clan} hungern."
+    en: "The {clan} are starving."
+discovery:
+  importance: 4
+  text:
+    de: "{name} von den {clan} entdeckt: {tech}."
+    en: "{name} of the {clan} discovers: {tech}."
+knowledge_shared:
+  importance: 3
+  text:
+    de: "Die {clan} lernen von den {teacher}: {tech}."
+    en: "The {clan} learn from the {teacher}: {tech}."
+clan_split:
+  importance: 4
+  text:
+    de: "Die {clan} sind zu viele geworden. Ein Teil zieht fort und nennt sich {new_clan}."
+    en: "The {clan} have grown too many. Some leave and call themselves {new_clan}."
+clan_merged:
+  importance: 3
+  text:
+    de: "Die letzten der {clan} schließen sich den {host} an."
+    en: "The last of the {clan} join the {host}."
+clan_died_out:
+  importance: 4
+  text:
+    de: "Die {clan} sind ausgestorben."
+    en: "The {clan} have died out."
+settlement_founded:
+  importance: 5
+  text:
+    de: "Die {clan} bleiben. Sie gründen die Siedlung {place}."
+    en: "The {clan} stay. They found the settlement {place}."
+settlement_abandoned:
+  importance: 4
+  text:
+    de: "Der Hunger vertreibt die {clan} aus {place}."
+    en: "Hunger drives the {clan} out of {place}."
