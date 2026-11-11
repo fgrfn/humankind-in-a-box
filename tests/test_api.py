@@ -154,5 +154,5 @@ def test_places_list_what_was_built(client: TestClient) -> None:
 def test_frontend_and_sprites_are_served(client: TestClient) -> None:
     assert client.get("/").status_code == 200
     atlas = client.get("/sprites/atlas.json").json()
-    assert {"grass", "deep_water", "oak", "path"} <= set(atlas["frames"])
+    assert {"grass", "deep_water", "oak", "path", "hut", "site", "ruin"} <= set(atlas["frames"])
     assert client.get("/sprites/atlas.png").headers["content-type"] == "image/png"
