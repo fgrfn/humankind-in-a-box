@@ -8,8 +8,8 @@
    "frame": {
     "h": 65,
     "w": 96,
-    "x": 100,
-    "y": 129
+    "x": 394,
+    "y": 163
    },
    "sourceSize": {
     "h": 65,
@@ -30,8 +30,8 @@
    "frame": {
     "h": 80,
     "w": 96,
-    "x": 296,
-    "y": 199
+    "x": 100,
+    "y": 303
    },
    "sourceSize": {
     "h": 80,
@@ -52,8 +52,8 @@
    "frame": {
     "h": 66,
     "w": 96,
-    "x": 296,
-    "y": 129
+    "x": 100,
+    "y": 230
    },
    "sourceSize": {
     "h": 66,
@@ -74,7 +74,7 @@
    "frame": {
     "h": 41,
     "w": 96,
-    "x": 2,
+    "x": 296,
     "y": 70
    },
    "sourceSize": {
@@ -88,6 +88,28 @@
     "y": 0
    }
   },
+  "child": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 35,
+    "w": 96,
+    "x": 2,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 35,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 35,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "copper_rock": {
    "anchor": {
     "x": 0.5,
@@ -96,8 +118,8 @@
    "frame": {
     "h": 65,
     "w": 96,
-    "x": 198,
-    "y": 129
+    "x": 2,
+    "y": 230
    },
    "sourceSize": {
     "h": 65,
@@ -118,8 +140,8 @@
    "frame": {
     "h": 74,
     "w": 96,
-    "x": 198,
-    "y": 199
+    "x": 2,
+    "y": 303
    },
    "sourceSize": {
     "h": 74,
@@ -184,8 +206,8 @@
    "frame": {
     "h": 53,
     "w": 96,
-    "x": 296,
-    "y": 70
+    "x": 100,
+    "y": 163
    },
    "sourceSize": {
     "h": 53,
@@ -193,6 +215,28 @@
    },
    "spriteSourceSize": {
     "h": 53,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "elder": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 40,
+    "w": 96,
+    "x": 198,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 40,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 40,
     "w": 96,
     "x": 0,
     "y": 0
@@ -220,6 +264,28 @@
     "y": 0
    }
   },
+  "fisher": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 46,
+    "w": 96,
+    "x": 2,
+    "y": 113
+   },
+   "sourceSize": {
+    "h": 46,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 46,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "forest_floor": {
    "anchor": {
     "x": 0.5,
@@ -238,6 +304,28 @@
    "spriteSourceSize": {
     "h": 32,
     "w": 64,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "gatherer": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 47,
+    "w": 96,
+    "x": 198,
+    "y": 113
+   },
+   "sourceSize": {
+    "h": 47,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 47,
+    "w": 96,
     "x": 0,
     "y": 0
    }
@@ -264,6 +352,28 @@
     "y": 0
    }
   },
+  "hunter": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 48,
+    "w": 96,
+    "x": 394,
+    "y": 113
+   },
+   "sourceSize": {
+    "h": 48,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 48,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "hut": {
    "anchor": {
     "x": 0.5,
@@ -272,8 +382,8 @@
    "frame": {
     "h": 68,
     "w": 96,
-    "x": 394,
-    "y": 129
+    "x": 198,
+    "y": 230
    },
    "sourceSize": {
     "h": 68,
@@ -316,8 +426,8 @@
    "frame": {
     "h": 71,
     "w": 96,
-    "x": 2,
-    "y": 199
+    "x": 296,
+    "y": 230
    },
    "sourceSize": {
     "h": 71,
@@ -325,6 +435,28 @@
    },
    "spriteSourceSize": {
     "h": 71,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "man": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 47,
+    "w": 96,
+    "x": 296,
+    "y": 113
+   },
+   "sourceSize": {
+    "h": 47,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 47,
     "w": 96,
     "x": 0,
     "y": 0
@@ -404,8 +536,8 @@
    "frame": {
     "h": 80,
     "w": 96,
-    "x": 394,
-    "y": 199
+    "x": 198,
+    "y": 303
    },
    "sourceSize": {
     "h": 80,
@@ -448,8 +580,8 @@
    "frame": {
     "h": 80,
     "w": 96,
-    "x": 2,
-    "y": 281
+    "x": 296,
+    "y": 303
    },
    "sourceSize": {
     "h": 80,
@@ -470,8 +602,8 @@
    "frame": {
     "h": 71,
     "w": 96,
-    "x": 100,
-    "y": 199
+    "x": 394,
+    "y": 230
    },
    "sourceSize": {
     "h": 71,
@@ -514,8 +646,8 @@
    "frame": {
     "h": 51,
     "w": 96,
-    "x": 198,
-    "y": 70
+    "x": 2,
+    "y": 163
    },
    "sourceSize": {
     "h": 51,
@@ -580,8 +712,8 @@
    "frame": {
     "h": 57,
     "w": 96,
-    "x": 394,
-    "y": 70
+    "x": 198,
+    "y": 163
    },
    "sourceSize": {
     "h": 57,
@@ -646,7 +778,7 @@
    "frame": {
     "h": 41,
     "w": 96,
-    "x": 100,
+    "x": 394,
     "y": 70
    },
    "sourceSize": {
@@ -668,8 +800,8 @@
    "frame": {
     "h": 64,
     "w": 96,
-    "x": 2,
-    "y": 129
+    "x": 296,
+    "y": 163
    },
    "sourceSize": {
     "h": 64,
@@ -677,6 +809,28 @@
    },
    "spriteSourceSize": {
     "h": 64,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "travellers": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 36,
+    "w": 96,
+    "x": 100,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 36,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 36,
     "w": 96,
     "x": 0,
     "y": 0
@@ -703,6 +857,28 @@
     "x": 0,
     "y": 0
    }
+  },
+  "woman": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 46,
+    "w": 96,
+    "x": 100,
+    "y": 113
+   },
+   "sourceSize": {
+    "h": 46,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 46,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
   }
  },
  "meta": {
@@ -713,17 +889,23 @@
    "birch": "object",
    "boulder": "object",
    "campfire": "object",
+   "child": "figure",
    "copper_rock": "object",
    "dead_tree": "object",
    "deep_water": "terrain",
    "dry_grass": "terrain",
    "drying_rack": "object",
+   "elder": "figure",
    "farmland": "terrain",
+   "fisher": "figure",
    "forest_floor": "terrain",
+   "gatherer": "figure",
    "grass": "terrain",
+   "hunter": "figure",
    "hut": "object",
    "ice": "terrain",
    "kiln": "object",
+   "man": "figure",
    "marsh": "terrain",
    "moss": "terrain",
    "mud": "terrain",
@@ -740,11 +922,13 @@
    "steppe": "terrain",
    "storage_pit": "object",
    "tent": "object",
-   "tundra": "terrain"
+   "travellers": "figure",
+   "tundra": "terrain",
+   "woman": "figure"
   },
   "scale": "1",
   "size": {
-   "h": 363,
+   "h": 385,
    "w": 530
   },
   "tile": {

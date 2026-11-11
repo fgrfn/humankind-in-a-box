@@ -62,6 +62,8 @@ const BUILDING_SPRITES: Record<string, string> = {
   kiln: "kiln",
 };
 
+const PEOPLE = ["woman", "man", "child", "elder", "hunter", "gatherer", "fisher"];
+
 // A fixed number per tile, so the same world always looks the same.
 function tileNoise(x: number, y: number, salt: number): number {
   let h = (x * 374761393 + y * 668265263 + salt * 2147483647) | 0;
@@ -91,10 +93,14 @@ function diamond(g: Graphics, x: number, y: number, inset = 0): void {
 // map is too small to carry them.
 function fitLabels(camps: Container, scale: number): void {
   for (const marker of camps.children) {
-    const label = (marker as Container).children.find((child) => child instanceof Text);
-    if (!label) continue;
-    label.visible = scale >= 0.8;
-    label.scale.set(1.05 / scale);
+    for (const child of (marker as Container).children) {
+      if (child instanceof Text) {
+        child.visible = scale >= 0.8;
+        child.scale.set(1.05 / scale);
+      } else if (child.label === "person") {
+        child.visible = scale >= 1.3; // too small to read from far away
+      }
+    }
   }
 }
 
@@ -391,6 +397,21 @@ export function MapView({ map, steps, groups, places, selected, focus, onSelect 
           g.poly([-1.5, 0, 0, -4, 1.5, 0]).fill(0x5a4a34);
         }
         marker.addChild(g);
+        // A few figures stand for the people: one for roughly every six.
+        const spots = [[-9, 3], [8, 4], [-3, 7], [11, -1]];
+        const shown = Math.min(spots.length, Math.ceil(group.population / 6));
+        for (let n = 0; n < shown; n++) {
+          const kind = group.settled || n > 0 ? PEOPLE[tileNoise(group.id, n, 8) % PEOPLE.length] : "travellers";
+          const figure = current.sheet?.textures[kind];
+          if (!figure) break;
+          const person = new Sprite(figure);
+          person.label = "person";
+          person.anchor.set(0.5, 1);
+          person.position.set(spots[n][0], spots[n][1]);
+          const size = SPRITE_SCALE * 0.5;
+          person.scale.set(tileNoise(group.id, n, 9) < 50 ? size : -size, size);
+          marker.addChild(person);
+        }
         const label = new Text({
           text: `${group.settled && group.place ? group.place : group.name} ${group.population}`,
           style: { fontFamily: "'Barlow Semi Condensed', system-ui, sans-serif", fontSize: 11, fontWeight: "500", fill: 0xf2efe6, stroke: { color: 0x10242d, width: 3 } },

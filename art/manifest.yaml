@@ -1,6 +1,7 @@
 # Which picture sits where on each generated sheet, row by row from the top left.
 # `kind: terrain` cells become flat ground tiles, `kind: object` cells keep what
-# stands on the ground and lose the earth rim underneath.
+# stands on the ground and lose the earth rim underneath. `kind: figure` cells
+# lose their ground altogether, so people can stand on any tile.
 sheets:
   - file: sheets/terrain-1.png
     kind: terrain
@@ -14,3 +15,6 @@ sheets:
   - file: sheets/buildings-1.png
     kind: object
     cells: [campfire, tent, hut, drying_rack, storage_pit, kiln, site, ruin]
+  - file: sheets/people-1.png
+    kind: figure
+    cells: [woman, man, child, elder, hunter, gatherer, fisher, travellers]
