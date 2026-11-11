@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Group, type Lang, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
-import { formatNumber, translator } from "./i18n";
+import { api, type Discovery, type Group, type Lang, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
+import { Chart, SERIES_COLOURS, type Point } from "./Chart";
+import { HistoryBand, type Mark } from "./HistoryBand";
+import { formatNumber, translator, type TextKey } from "./i18n";
 import { MapView } from "./MapView";
 
-type Tab = "chronicle" | "statistics" | "clans";
+type View = "map" | "numbers" | "clans";
+type Translate = (key: TextKey) => string;
 
 const METRIC_KEYS = [
   "people.population",
@@ -42,29 +45,176 @@ function usePolling(task: () => Promise<void>, seconds: number, deps: unknown[])
   }, deps);
 }
 
-function Sparkline({ values }: { values: number[] }) {
-  if (values.length < 2) return <svg className="spark" viewBox="0 0 100 28" />;
-  const recent = values.slice(-200);
-  const low = Math.min(...recent);
-  const high = Math.max(...recent);
-  const span = high - low || 1;
-  const points = recent
-    .map((value, index) => `${((index / (recent.length - 1)) * 100).toFixed(1)},${(26 - ((value - low) / span) * 24).toFixed(1)}`)
-    .join(" ");
+function BoxGlyph() {
   return (
-    <svg className="spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
-      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    <svg className="glyph" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2.5 21 7v10l-9 4.5L3 17V7z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M3 7l9 4.5L21 7M12 11.5v10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M12 6.2l3 1.5-3 1.5-3-1.5z" fill="currentColor" />
     </svg>
   );
 }
 
-function Tile({ label, value, series }: { label: string; value: string; series?: number[] }) {
+function Chronicle({ events, t, minImportance, setMinImportance, explain, extinct }: {
+  events: WorldEvent[];
+  t: Translate;
+  minImportance: number;
+  setMinImportance: (level: number) => void;
+  explain: (event: WorldEvent) => void;
+  extinct: boolean;
+}) {
   return (
-    <div className="tile">
-      <div className="tile-label">{label}</div>
-      <div className="tile-value">{value}</div>
-      {series ? <Sparkline values={series} /> : null}
+    <>
+      <label className="filter">
+        {t("importance")}
+        <select value={minImportance} onChange={(event) => setMinImportance(Number(event.target.value))}>
+          {[1, 2, 3, 4, 5].map((level) => (
+            <option key={level} value={level}>
+              {level}
+            </option>
+          ))}
+        </select>
+      </label>
+      {extinct ? <p className="note">{t("extinct")}</p> : null}
+      {events.length === 0 ? <p className="note">{t("noEvents")}</p> : null}
+      <ol className="events">
+        {events.map((event, index) => {
+          const newYear = index === 0 || events[index - 1].year !== event.year;
+          return (
+            <li key={event.seq} className={`weight-${event.importance}`}>
+              {newYear ? (
+                <span className="year-mark">
+                  {t("year")} {event.year}
+                </span>
+              ) : null}
+              <button onClick={() => explain(event)} title={t("why")}>
+                {event.text}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </>
+  );
+}
+
+function Numbers({ stats, series, discoveries, lang, t }: { stats: Stats; series: Series; discoveries: Discovery[]; lang: Lang; t: Translate }) {
+  const points = (key: string): Point[] => series[key] ?? [];
+  const fed = useMemo(() => {
+    const needed = new Map((series["food.needed"] ?? []).map((point) => [point.year, point.value]));
+    return (series["food.eaten"] ?? []).map((point) => ({
+      year: point.year,
+      value: needed.get(point.year) ? (100 * point.value) / needed.get(point.year)! : 100,
+    }));
+  }, [series]);
+  const climate = useMemo(() => points("climate.anomaly").map((point) => ({ year: point.year, value: point.value / 10 })), [series]);
+  // Yearly births and deaths jump around; a ten-year mean shows the trend.
+  const smooth = (key: string): Point[] => {
+    const raw = points(key);
+    return raw.map((point, index) => {
+      const window = raw.slice(Math.max(0, index - 9), index + 1);
+      return { year: point.year, value: window.reduce((sum, item) => sum + item.value, 0) / window.length };
+    });
+  };
+  const common = { lang, yearLabel: t("year"), tableLabel: t("table") };
+  const facts: [string, string][] = [
+    [t("year"), formatNumber(stats.year, lang)],
+    [t("population"), formatNumber(stats.population, lang)],
+    [t("everLived"), formatNumber(stats.ever_lived, lang)],
+    [t("clans"), formatNumber(stats.clans, lang)],
+    [t("settlements"), formatNumber(stats.settlements, lang)],
+    [t("discoveries"), `${stats.discoveries} / ${stats.discoveries_possible}`],
+    [t("migrations"), formatNumber(stats.migrations_total, lang)],
+    [t("events"), formatNumber(stats.events_total, lang)],
+    [t("seed"), String(stats.seed)],
+  ];
+  return (
+    <div className="page">
+      <h2>{t("worldInNumbers")}</h2>
+      <dl className="facts">
+        {facts.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <div className="charts">
+        <Chart title={t("populationChart")} series={[{ name: t("population"), colour: SERIES_COLOURS[0], points: points("people.population") }]} {...common} />
+        <Chart
+          title={t("perYear")}
+          series={[
+            { name: t("birthsShort"), colour: SERIES_COLOURS[0], points: smooth("people.births") },
+            { name: t("deathsShort"), colour: SERIES_COLOURS[1], points: smooth("people.deaths") },
+          ]}
+          digits={1}
+          {...common}
+        />
+        <Chart
+          title={t("groupsChart")}
+          series={[
+            { name: t("clans"), colour: SERIES_COLOURS[0], points: points("clans.count") },
+            { name: t("settlements"), colour: SERIES_COLOURS[1], points: points("settlements.count") },
+          ]}
+          {...common}
+        />
+        <Chart title={t("fedChart")} series={[{ name: t("fed"), colour: SERIES_COLOURS[0], points: fed }]} unit=" %" fixedMax={100} {...common} />
+        <Chart title={t("climateChart")} series={[{ name: t("climate"), colour: SERIES_COLOURS[1], points: climate }]} unit=" °C" digits={1} signed {...common} />
+      </div>
+
+      <h2>{t("discoveries")}</h2>
+      <ul className="discoveries">
+        {discoveries.map((item) => (
+          <li key={item.id} className={item.known ? "known" : ""}>
+            <span className="pip" aria-hidden="true" />
+            <span className="name">{item.name}</span>
+            <span className="state">
+              {item.known
+                ? `${t("since")} ${item.first_year}, ${t("knownBy")} ${item.clans_knowing} ${item.clans_knowing === 1 ? t("clansOne") : t("clans")}`
+                : item.requires.length
+                  ? `${t("unknown")}, ${t("needs")} ${item.requires.join(", ")}`
+                  : t("unknown")}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
+  );
+}
+
+function ClanDetail({ detail, t, onShow }: { detail: Group; t: Translate; onShow: () => void }) {
+  return (
+    <article className="detail">
+      <h2>{detail.name}</h2>
+      <p className="lede">
+        {detail.population} {t("people")}, {detail.settled ? `${t("settled")}${detail.place ? ` (${detail.place})` : ""}` : t("wandering")}, {t("founded")} {detail.founded_year}
+      </p>
+      <button className="plain" onClick={onShow}>
+        {t("showOnMap")}
+      </button>
+      <h3>{t("knowledge")}</h3>
+      {detail.technologies.length === 0 ? <p className="note">{t("noKnowledge")}</p> : null}
+      <ul className="knowledge">
+        {detail.technologies.map((tech) => (
+          <li key={tech.id}>
+            <span>{tech.name}</span>
+            <small>
+              {t(tech.how)}, {t("year")} {tech.year}
+            </small>
+          </li>
+        ))}
+      </ul>
+      <h3>{t("members")}</h3>
+      <ul className="members">
+        {(detail.members ?? []).slice(0, 60).map((member) => (
+          <li key={member.id}>
+            <span>{member.name}</span>
+            <small>{member.age}</small>
+          </li>
+        ))}
+      </ul>
+    </article>
   );
 }
 
@@ -78,7 +228,10 @@ export function App() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [events, setEvents] = useState<WorldEvent[]>([]);
   const [series, setSeries] = useState<Series>({});
-  const [tab, setTab] = useState<Tab>("chronicle");
+  const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
+  const [marks, setMarks] = useState<Mark[]>([]);
+  const [view, setView] = useState<View>("map");
+  const [ledgerOpen, setLedgerOpen] = useState(() => window.matchMedia("(min-width: 821px)").matches);
   const [minImportance, setMinImportance] = useState(3);
   const [selected, setSelected] = useState<number | null>(null);
   const [detail, setDetail] = useState<Group | null>(null);
@@ -127,12 +280,19 @@ export function App() {
   usePolling(
     async () => {
       if (worldId === null) return;
-      const [nextSteps, nextSeries] = await Promise.all([api.steps(worldId), api.metrics(worldId, METRIC_KEYS)]);
+      const [nextSteps, nextSeries, nextDiscoveries, found] = await Promise.all([
+        api.steps(worldId),
+        api.metrics(worldId, METRIC_KEYS),
+        api.technologies(worldId, lang),
+        api.discoveries(worldId, lang),
+      ]);
       setSteps(nextSteps.values);
       setSeries(nextSeries);
+      setDiscoveries(nextDiscoveries);
+      setMarks(found.map((event) => ({ year: event.year, text: event.text })));
     },
     30,
-    [worldId],
+    [worldId, lang],
   );
 
   // Chronicle: load the recent past, then follow live.
@@ -177,9 +337,9 @@ export function App() {
     };
   }, [worldId, selected, lang, stats?.year]);
 
-  const select = useCallback((id: number) => {
+  const selectFromMap = useCallback((id: number) => {
     setSelected(id);
-    setTab("clans");
+    setView("clans");
   }, []);
 
   const explain = useCallback(
@@ -190,32 +350,44 @@ export function App() {
     [worldId, lang],
   );
 
-  const values = (key: string) => (series[key] ?? []).map((point) => point.value);
-  const fed = useMemo(() => {
-    const eaten = series["food.eaten"] ?? [];
-    const needed = new Map((series["food.needed"] ?? []).map((point) => [point.year, point.value]));
-    return eaten.map((point) => (needed.get(point.year) ? (100 * point.value) / needed.get(point.year)! : 100));
-  }, [series]);
+  const showOnMap = useCallback((id: number) => {
+    setView("map");
+    setFocus({ id, nonce: Date.now() });
+  }, []);
 
   const sortedGroups = useMemo(() => [...groups].sort((a, b) => b.population - a.population || a.id - b.id), [groups]);
+  const extinct = stats !== null && stats.population === 0 && stats.ever_lived > 0;
+  const views: View[] = ["map", "numbers", "clans"];
 
   return (
-    <div className="app">
-      <header>
-        <h1>{t("title")}</h1>
-        {stats ? (
-          <div className="clock">
-            <strong>
-              {t("year")} {formatNumber(stats.year, lang)}
-            </strong>
-            <span>{t(stats.season)}</span>
-            <span>
-              {formatNumber(stats.population, lang)} {t("people")}
-            </span>
-          </div>
-        ) : (
-          <div className="clock">{t("waiting")}</div>
-        )}
+    <div className={`app view-${view}`}>
+      <header className="top">
+        <div className="brand">
+          <BoxGlyph />
+          <span>{t("title")}</span>
+        </div>
+        <p className="now">
+          {stats ? (
+            <>
+              <strong>
+                {t("year")} {formatNumber(stats.year, lang)}
+              </strong>
+              <span>{t(stats.season)}</span>
+              <span>
+                {formatNumber(stats.population, lang)} {t("people")}
+              </span>
+            </>
+          ) : (
+            t("waiting")
+          )}
+        </p>
+        <nav className="views" aria-label="Views">
+          {views.map((name) => (
+            <button key={name} className={view === name ? "on" : ""} aria-current={view === name ? "page" : undefined} onClick={() => setView(name)}>
+              {t(name)}
+            </button>
+          ))}
+        </nav>
         <div className="lang" role="group" aria-label="Language">
           {(["de", "en"] as const).map((code) => (
             <button key={code} className={lang === code ? "on" : ""} onClick={() => setLang(code)} aria-pressed={lang === code}>
@@ -225,131 +397,65 @@ export function App() {
         </div>
       </header>
 
+      <HistoryBand population={series["people.population"] ?? []} marks={marks} lang={lang} yearLabel={t("year")} peopleLabel={t("people")} emptyLabel={t("historyEmpty")} />
+
       <main>
-        <MapView map={map} steps={steps} groups={groups} selected={selected} focus={focus} onSelect={select} />
-
-        <section className="panel">
-          <nav role="tablist">
-            {(["chronicle", "statistics", "clans"] as const).map((name) => (
-              <button key={name} role="tab" aria-selected={tab === name} className={tab === name ? "on" : ""} onClick={() => setTab(name)}>
-                {t(name)}
-              </button>
-            ))}
-          </nav>
-
-          {tab === "chronicle" ? (
-            <div className="scroll">
-              <label className="filter">
-                {t("importance")}
-                <select value={minImportance} onChange={(event) => setMinImportance(Number(event.target.value))}>
-                  {[1, 2, 3, 4, 5].map((level) => (
-                    <option key={level} value={level}>
-                      {level}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {stats && stats.population === 0 && stats.ever_lived > 0 ? <p className="note">{t("extinct")}</p> : null}
-              {events.length === 0 ? <p className="note">{t("noEvents")}</p> : null}
-              <ol className="events">
-                {events.map((event) => (
-                  <li key={event.seq} className={`importance-${event.importance}`}>
-                    <button onClick={() => explain(event)} title={t("why")}>
-                      <span className="when">
-                        {event.year}·{String(event.month).padStart(2, "0")}
-                      </span>
-                      <span className="what">{event.text}</span>
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ) : null}
-
-          {tab === "statistics" && stats ? (
-            <div className="scroll">
-              <div className="tiles">
-                <Tile label={t("year")} value={formatNumber(stats.year, lang)} />
-                <Tile label={t("population")} value={formatNumber(stats.population, lang)} series={values("people.population")} />
-                <Tile label={t("everLived")} value={formatNumber(stats.ever_lived, lang)} />
-                <Tile label={t("clans")} value={formatNumber(stats.clans, lang)} series={values("clans.count")} />
-                <Tile label={t("settlements")} value={formatNumber(stats.settlements, lang)} series={values("settlements.count")} />
-                <Tile label={t("discoveries")} value={`${stats.discoveries} / ${stats.discoveries_possible}`} />
-                <Tile label={t("births")} value={formatNumber(values("people.births").at(-1) ?? 0, lang)} series={values("people.births")} />
-                <Tile label={t("deaths")} value={formatNumber(values("people.deaths").at(-1) ?? 0, lang)} series={values("people.deaths")} />
-                <Tile label={t("fed")} value={`${formatNumber(fed.at(-1) ?? 100, lang)} %`} series={fed} />
-                <Tile
-                  label={t("climate")}
-                  value={stats.climate_anomaly === null ? "–" : `${stats.climate_anomaly > 0 ? "+" : ""}${formatNumber(stats.climate_anomaly, lang, 1)} °C`}
-                  series={values("climate.anomaly")}
-                />
-                <Tile label={t("migrations")} value={formatNumber(stats.migrations_total, lang)} />
-                <Tile label={t("events")} value={formatNumber(stats.events_total, lang)} />
-                <Tile label={t("seed")} value={String(stats.seed)} />
+        <div className="stage" hidden={view !== "map"}>
+          <MapView map={map} steps={steps} groups={groups} selected={selected} focus={focus} onSelect={selectFromMap} />
+          <aside className={`ledger ${ledgerOpen ? "open" : ""}`} aria-label={t("chronicle")}>
+            <button className="ledger-head" onClick={() => setLedgerOpen((open) => !open)} aria-expanded={ledgerOpen} title={ledgerOpen ? t("hideChronicle") : t("showChronicle")}>
+              <span className="ledger-title">{t("chronicle")}</span>
+              {!ledgerOpen && events[0] ? <span className="ledger-peek">{events[0].text}</span> : null}
+              <svg viewBox="0 0 12 12" aria-hidden="true">
+                <path d={ledgerOpen ? "M2 4l4 4 4-4" : "M2 8l4-4 4 4"} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {ledgerOpen ? (
+              <div className="ledger-body">
+                <Chronicle events={events} t={t} minImportance={minImportance} setMinImportance={setMinImportance} explain={explain} extinct={extinct} />
               </div>
-              {stats.last_event ? (
-                <p className="note">
-                  {t("lastEvent")} ({t("year")} {stats.last_event_year}): {stats.last_event}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
+            ) : null}
+          </aside>
+        </div>
 
-          {tab === "clans" ? (
-            <div className="scroll">
-              {detail ? (
-                <article className="detail">
-                  <h2>{detail.name}</h2>
-                  <p>
-                    {detail.population} {t("people")}, {detail.settled ? `${t("settled")}${detail.place ? ` (${detail.place})` : ""}` : t("wandering")}, {t("founded")} {detail.founded_year}
-                  </p>
-                  <button className="link" onClick={() => setFocus({ id: detail.id, nonce: Date.now() })}>
-                    {t("showOnMap")}
+        {view === "numbers" && stats ? <Numbers stats={stats} series={series} discoveries={discoveries} lang={lang} t={t} /> : null}
+
+        {view === "clans" ? (
+          <div className="page clans-page">
+            <ul className="clans">
+              {sortedGroups.map((group) => (
+                <li key={group.id}>
+                  <button className={group.id === selected ? "on" : ""} onClick={() => setSelected(group.id)}>
+                    <span className="clan-name">{group.name}</span>
+                    <span className="clan-where">{group.settled ? (group.place ?? t("settled")) : t("wandering")}</span>
+                    <span className="clan-count">{group.population}</span>
                   </button>
-                  <h3>{t("knowledge")}</h3>
-                  {detail.technologies.length === 0 ? <p>{t("noKnowledge")}</p> : null}
-                  <ul>
-                    {detail.technologies.map((tech) => (
-                      <li key={tech.id}>
-                        {tech.name} <small>({t(tech.how)}, {t("year")} {tech.year})</small>
-                      </li>
-                    ))}
-                  </ul>
-                  <h3>{t("members")}</h3>
-                  <ul className="members">
-                    {(detail.members ?? []).slice(0, 40).map((member) => (
-                      <li key={member.id}>
-                        {member.name} <small>{member.age} {t("years")}</small>
-                      </li>
-                    ))}
-                  </ul>
-                </article>
-              ) : null}
-              <ul className="clans">
-                {sortedGroups.map((group) => (
-                  <li key={group.id}>
-                    <button className={group.id === selected ? "on" : ""} onClick={() => setSelected(group.id)}>
-                      <span>{group.name}{group.settled ? ` · ${group.place ?? t("settled")}` : ""}</span>
-                      <span>{group.population}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </section>
+                </li>
+              ))}
+            </ul>
+            {detail ? <ClanDetail detail={detail} t={t} onShow={() => showOnMap(detail.id)} /> : <p className="note pick">{t("pickClan")}</p>}
+          </div>
+        ) : null}
       </main>
+
+      <nav className="tabbar" aria-label="Views">
+        {views.map((name) => (
+          <button key={name} className={view === name ? "on" : ""} aria-current={view === name ? "page" : undefined} onClick={() => setView(name)}>
+            {t(name)}
+          </button>
+        ))}
+      </nav>
 
       {why ? (
         <div className="overlay" onClick={() => setWhy(null)}>
           <div className="dialog" role="dialog" aria-modal="true" aria-label={t("why")} onClick={(event) => event.stopPropagation()}>
             <h2>{t("why")}</h2>
-            <p>{why.event.text}</p>
+            <p className="lede">{why.event.text}</p>
             {why.decisions.length === 0 ? <p className="note">{why.expired ? t("expired") : t("noDecision")}</p> : null}
             {why.decisions.map((decision, index) => (
               <dl key={index}>
                 <dt>{t("rule")}</dt>
-                <dd><code>{decision.rule}</code></dd>
+                <dd>{decision.rule}</dd>
                 <dt>{t("factors")}</dt>
                 <dd>
                   {decision.factors.length === 0
@@ -359,10 +465,15 @@ export function App() {
                 <dt>{t("chance")}</dt>
                 <dd>{decision.chance === null ? "–" : `${formatNumber(decision.chance * 100, lang, 2)} %`}</dd>
                 <dt>{t("roll")}</dt>
-                <dd>{formatNumber(decision.roll * (decision.chance === null ? 1 : 100), lang, 2)}{decision.chance === null ? "" : " %"}</dd>
+                <dd>
+                  {formatNumber(decision.roll * (decision.chance === null ? 1 : 100), lang, 2)}
+                  {decision.chance === null ? "" : " %"}
+                </dd>
               </dl>
             ))}
-            <button onClick={() => setWhy(null)}>{t("close")}</button>
+            <button className="solid" onClick={() => setWhy(null)}>
+              {t("close")}
+            </button>
           </div>
         </div>
       ) : null}

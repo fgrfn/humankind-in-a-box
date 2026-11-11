@@ -731,6 +731,8 @@ class Society:
             return
         new = self.add_clan(site[1], site[2], clan.id, self.drift_language(clan.language))
         new.techs = dict(clan.techs)
+        for tech_id in sorted(new.techs):
+            self.new_discoveries.append((new.id, tech_id, self.world.tick, 0, "inherited"))
         movers = [pid for pid in clan.members if self.persons[pid].family in leaving]
         for person_id in movers:
             person = self.persons[person_id]

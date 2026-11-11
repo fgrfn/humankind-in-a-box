@@ -7,7 +7,7 @@ const TILE_W = 32;
 const TILE_H = 16;
 
 const BIOME_COLOURS: Record<string, number> = {
-  ocean: 0x1f3d4d,
+  ocean: 0x1b3947,
   coast: 0x2d5b6b,
   river: 0x3a7a8c,
   tundra: 0x9aa39a,
@@ -39,6 +39,17 @@ function diamond(g: Graphics, x: number, y: number, inset = 0): void {
   g.poly([cx, cy - h + TILE_H / 2, cx + w, cy + TILE_H / 2, cx, cy + h + TILE_H / 2, cx - w, cy + TILE_H / 2]);
 }
 
+// Labels keep one size on screen whatever the zoom, and step aside when the
+// map is too small to carry them.
+function fitLabels(camps: Container, scale: number): void {
+  for (const marker of camps.children) {
+    const label = (marker as Container).children[1];
+    if (!label) continue;
+    label.visible = scale >= 0.8;
+    label.scale.set(1.05 / scale);
+  }
+}
+
 interface Scene {
   app: Application;
   world: Container;
@@ -60,6 +71,7 @@ export function MapView({ map, steps, groups, selected, focus, onSelect }: Props
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<Scene | null>(null);
   const ready = useRef<Promise<void> | null>(null);
+  const placed = useRef(false);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
@@ -73,7 +85,7 @@ export function MapView({ map, steps, groups, selected, focus, onSelect }: Props
     let moved = 0;
 
     ready.current = app
-      .init({ resizeTo: element, background: 0x14181c, antialias: false, resolution: window.devicePixelRatio || 1, autoDensity: true })
+      .init({ resizeTo: element, background: 0x1b3947, antialias: false, resolution: window.devicePixelRatio || 1, autoDensity: true })
       .then(() => {
         if (disposed) {
           app.destroy(true);
@@ -95,6 +107,7 @@ export function MapView({ map, steps, groups, selected, focus, onSelect }: Props
           const ratio = next / world.scale.x;
           world.position.set(px - (px - world.x) * ratio, py - (py - world.y) * ratio);
           world.scale.set(next);
+          fitLabels(camps, next);
         };
         canvas.addEventListener("wheel", (event) => {
           event.preventDefault();
@@ -165,12 +178,7 @@ export function MapView({ map, steps, groups, selected, focus, onSelect }: Props
           }
         }
       }
-      const [cx, cy] = project(map.width / 2, map.height / 2);
-      const screen = current.app.screen;
-      const fit = Math.min(screen.width / (map.width * TILE_W), screen.height / (map.height * TILE_H)) * 1.6;
-      const scale = Math.max(0.35, Math.min(3, fit));
-      current.world.scale.set(scale);
-      current.world.position.set(screen.width / 2 - cx * scale, screen.height / 2 - cy * scale);
+      placed.current = false;
     });
   }, [map]);
 
@@ -218,10 +226,10 @@ export function MapView({ map, steps, groups, selected, focus, onSelect }: Props
         marker.addChild(g);
         const label = new Text({
           text: `${group.settled && group.place ? group.place : group.name} ${group.population}`,
-          style: { fontFamily: "system-ui, sans-serif", fontSize: 9, fill: 0xf2efe6, stroke: { color: 0x14181c, width: 3 } },
+          style: { fontFamily: "'Barlow Semi Condensed', system-ui, sans-serif", fontSize: 11, fontWeight: "500", fill: 0xf2efe6, stroke: { color: 0x10242d, width: 3 } },
         });
         label.anchor.set(0.5, 1);
-        label.position.set(0, -14);
+        label.position.set(0, -13);
         label.resolution = 3;
         marker.addChild(label);
         marker.eventMode = "static";
@@ -232,8 +240,39 @@ export function MapView({ map, steps, groups, selected, focus, onSelect }: Props
         });
         layer.addChild(marker);
       }
+      fitLabels(layer, current.world.scale.x);
     });
   }, [groups, selected]);
+
+  // First view: centre on where the people are, at a scale that suits the screen.
+  useEffect(() => {
+    if (!map || placed.current) return;
+    void ready.current?.then(() => {
+      const current = scene.current;
+      if (!current || placed.current) return;
+      const screen = current.app.screen;
+      if (screen.width < 10 || screen.height < 10) return;
+      let tx = map.width / 2;
+      let ty = map.height / 2;
+      const people = groups.reduce((sum, group) => sum + group.population, 0);
+      if (people > 0) {
+        tx = groups.reduce((sum, group) => sum + group.x * group.population, 0) / people;
+        ty = groups.reduce((sum, group) => sum + group.y * group.population, 0) / people;
+      } else if (groups.length === 0 && map.width > 0) {
+        return; // wait for the camps before deciding where to look
+      }
+      const narrow = screen.width < 700;
+      const fit = Math.min(screen.width / (map.width * TILE_W), screen.height / (map.height * TILE_H));
+      const scale = narrow ? 0.62 : Math.max(0.6, Math.min(1.5, fit * 1.15));
+      const [cx, cy] = project(tx, ty);
+      // On wide screens the chronicle covers the right edge, so look a little left of centre.
+      const centreX = narrow ? screen.width / 2 : (screen.width - 380) / 2;
+      current.world.scale.set(scale);
+      current.world.position.set(centreX - cx * scale, screen.height * (narrow ? 0.45 : 0.5) - cy * scale);
+      fitLabels(current.camps, scale);
+      placed.current = true;
+    });
+  }, [map, groups]);
 
   // Centre the map on a clan when asked to.
   useEffect(() => {
@@ -246,6 +285,7 @@ export function MapView({ map, steps, groups, selected, focus, onSelect }: Props
       const scale = Math.max(current.world.scale.x, 2);
       current.world.scale.set(scale);
       current.world.position.set(current.app.screen.width / 2 - cx * scale, current.app.screen.height / 2 - cy * scale);
+      fitLabels(current.camps, scale);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
