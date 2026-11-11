@@ -1,0 +1,13 @@
+# Which picture sits where on each generated sheet, row by row from the top left.
+# `kind: terrain` cells become flat ground tiles, `kind: object` cells keep what
+# stands on the ground and lose the earth rim underneath.
+sheets:
+  - file: sheets/terrain-1.png
+    kind: terrain
+    cells: [grass, dry_grass, forest_floor, sand, rock, snow, shallow_water, deep_water]
+  - file: sheets/terrain-2.png
+    kind: terrain
+    cells: [moss, tundra, steppe, marsh, mud, farmland, path, ice]
+  - file: sheets/nature-1.png
+    kind: object
+    cells: [oak, pine, birch, dead_tree, berry_bush, reeds, boulder, copper_rock]

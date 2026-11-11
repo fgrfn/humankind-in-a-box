@@ -113,3 +113,18 @@ settlement_abandoned:
   text:
     de: "Der Hunger vertreibt die {clan} aus {place}."
     en: "Hunger drives the {clan} out of {place}."
+construction_started:
+  importance: 2
+  text:
+    de: "Die {clan} beginnen in {place} mit dem Bau: {building}."
+    en: "The {clan} start building in {place}: {building}."
+building_finished:
+  importance: 3
+  text:
+    de: "In {place} steht ein neues Bauwerk: {building}."
+    en: "A new structure stands in {place}: {building}."
+building_ruined:
+  importance: 2
+  text:
+    de: "Im verlassenen {place} verfällt ein Bauwerk: {building}."
+    en: "In abandoned {place} a structure falls into ruin: {building}."

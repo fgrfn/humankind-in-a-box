@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Discovery, type Group, type Lang, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
+import { api, type Discovery, type Group, type Lang, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
 import { Chart, SERIES_COLOURS, type Point } from "./Chart";
 import { HistoryBand, type Mark } from "./HistoryBand";
 import { formatNumber, translator, type TextKey } from "./i18n";
@@ -205,6 +205,25 @@ function ClanDetail({ detail, t, onShow }: { detail: Group; t: Translate; onShow
           </li>
         ))}
       </ul>
+      {detail.buildings.length > 0 ? (
+        <>
+          <h3>{t("buildings")}</h3>
+          <ul className="knowledge">
+            {detail.buildings.map((building) => (
+              <li key={building.id}>
+                <span>{building.name}</span>
+                <small>
+                  {building.state === "site"
+                    ? `${t("site")}, ${building.progress_percent} %`
+                    : building.state === "ruin"
+                      ? t("ruin")
+                      : `${t("since")} ${building.finished_year}`}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
       <h3>{t("members")}</h3>
       <ul className="members">
         {(detail.members ?? []).slice(0, 60).map((member) => (
@@ -226,6 +245,7 @@ export function App() {
   const [map, setMap] = useState<WorldMap | null>(null);
   const [steps, setSteps] = useState<number[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [places, setPlaces] = useState<Place[]>([]);
   const [events, setEvents] = useState<WorldEvent[]>([]);
   const [series, setSeries] = useState<Series>({});
   const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
@@ -269,9 +289,14 @@ export function App() {
   usePolling(
     async () => {
       if (worldId === null) return;
-      const [nextStats, nextGroups] = await Promise.all([api.stats(worldId, lang), api.groups(worldId, lang)]);
+      const [nextStats, nextGroups, nextPlaces] = await Promise.all([
+        api.stats(worldId, lang),
+        api.groups(worldId, lang),
+        api.places(worldId, lang),
+      ]);
       setStats(nextStats);
       setGroups(nextGroups);
+      setPlaces(nextPlaces);
     },
     5,
     [worldId, lang],
@@ -401,7 +426,7 @@ export function App() {
 
       <main>
         <div className="stage" hidden={view !== "map"}>
-          <MapView map={map} steps={steps} groups={groups} selected={selected} focus={focus} onSelect={selectFromMap} />
+          <MapView map={map} steps={steps} groups={groups} places={places} selected={selected} focus={focus} onSelect={selectFromMap} />
           <aside className={`ledger ${ledgerOpen ? "open" : ""}`} aria-label={t("chronicle")}>
             <button className="ledger-head" onClick={() => setLedgerOpen((open) => !open)} aria-expanded={ledgerOpen} title={ledgerOpen ? t("hideChronicle") : t("showChronicle")}>
               <span className="ledger-title">{t("chronicle")}</span>

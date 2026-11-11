@@ -73,8 +73,8 @@ def simulate(db_path: Path, settings: Settings, years: int, seed: int | None) ->
         while world.tick < target:
             world.step()
             if world.tick % (25 * DAYS_PER_YEAR) == 0:
-                store.save(world, settings.world_log_years)
-        store.save(world, settings.world_log_years)
+                store.save(world, settings.world_log_years, settings.event_detail_years)
+        store.save(world, settings.world_log_years, settings.event_detail_years)
         log.info(
             "simulation finished",
             extra={
@@ -133,9 +133,9 @@ class Worker:
                 # No catching up after a pause: the world continues where it stood.
                 next_tick = max(next_tick + seconds_per_tick, now)
                 if now >= next_save:
-                    store.save(world, settings.world_log_years)
+                    store.save(world, settings.world_log_years, settings.event_detail_years)
                     next_save = now + settings.autosave_seconds
         finally:
-            store.save(world, settings.world_log_years)
+            store.save(world, settings.world_log_years, settings.event_detail_years)
             store.close()
             log.info("worker stopped", extra={"world_id": world.id, "tick": world.tick})

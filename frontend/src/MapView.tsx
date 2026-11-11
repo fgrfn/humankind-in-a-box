@@ -1,12 +1,40 @@
-import { Application, Container, Graphics, Text } from "pixi.js";
+import { Application, Assets, Container, Graphics, Sprite, type Spritesheet, Text } from "pixi.js";
 import { useEffect, useRef } from "react";
-import type { Group, WorldMap } from "./api";
+import type { Building, Group, Place, WorldMap } from "./api";
 
-// Placeholder graphics: flat coloured diamonds until the sprite atlas exists.
+// One tile is 32 x 16 map units. The sprites are drawn at twice that size, so
+// the map is pixel-exact at zoom 2 and stays sharp when zoomed further in.
 const TILE_W = 32;
 const TILE_H = 16;
+const SPRITE_SCALE = 0.5;
 
-const BIOME_COLOURS: Record<string, number> = {
+// Ground per biome. Several names mean: pick one per tile, always the same one.
+const GROUND: Record<string, string[]> = {
+  ocean: ["deep_water"],
+  coast: ["shallow_water"],
+  river: ["shallow_water"],
+  tundra: ["tundra", "tundra", "tundra", "snow"],
+  taiga: ["forest_floor", "forest_floor", "moss"],
+  forest: ["forest_floor", "moss", "grass"],
+  grassland: ["grass", "grass", "grass", "dry_grass"],
+  steppe: ["steppe", "steppe", "dry_grass"],
+  desert: ["sand"],
+  mountain: ["rock"],
+  marsh: ["marsh", "marsh", "mud"],
+};
+
+// What grows or lies on a tile: [sprite, chance in percent], tried in order.
+const NATURE: Record<string, [string, number][]> = {
+  taiga: [["pine", 55], ["dead_tree", 3]],
+  forest: [["oak", 38], ["birch", 14], ["berry_bush", 6]],
+  grassland: [["berry_bush", 3], ["oak", 2], ["birch", 1]],
+  steppe: [["dead_tree", 1], ["boulder", 1]],
+  tundra: [["boulder", 2], ["dead_tree", 1]],
+  marsh: [["reeds", 40]],
+  mountain: [["boulder", 6]],
+};
+// Flat colours, used only when the sprite atlas cannot be loaded.
+const FALLBACK_COLOURS: Record<string, number> = {
   ocean: 0x1b3947,
   coast: 0x2d5b6b,
   river: 0x3a7a8c,
@@ -19,7 +47,27 @@ const BIOME_COLOURS: Record<string, number> = {
   mountain: 0x7b766f,
   marsh: 0x5c7460,
 };
+const DEPOSIT_SPRITES: Record<string, string> = {
+  flint: "boulder",
+  copper_ore: "copper_rock",
+  tin_ore: "boulder",
+  iron_ore: "boulder",
+};
 const DEPOSIT_COLOURS = [0xd9d2c0, 0xc97b4a, 0x8a8f98, 0xb7c4cc, 0xe9e4d8, 0xb04a3a];
+const BUILDING_COLOURS: Record<string, [number, number]> = {
+  fire_place: [0xe0b45c, 0xd0714a],
+  hut: [0xc9895a, 0x8a4f38],
+  drying_rack: [0xb89a6a, 0x7a6244],
+  storage_pit: [0x8d7a5c, 0x5a4a34],
+  kiln: [0xb5654a, 0x6e3b2c],
+};
+
+// A fixed number per tile, so the same world always looks the same.
+function tileNoise(x: number, y: number, salt: number): number {
+  let h = (x * 374761393 + y * 668265263 + salt * 2147483647) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) % 100;
+}
 
 function shade(colour: number, factor: number): number {
   const r = Math.min(255, Math.round(((colour >> 16) & 255) * factor));
@@ -53,21 +101,26 @@ function fitLabels(camps: Container, scale: number): void {
 interface Scene {
   app: Application;
   world: Container;
-  terrain: Graphics;
-  paths: Graphics;
+  terrain: Container;
+  paths: Container;
+  nature: Container;
+  buildings: Container;
   camps: Container;
+  sheet: Spritesheet | null;
+  natureAt: Map<number, Sprite>;
 }
 
 interface Props {
   map: WorldMap | null;
   steps: number[];
   groups: Group[];
+  places: Place[];
   selected: number | null;
   focus: { id: number; nonce: number } | null;
   onSelect: (id: number) => void;
 }
 
-export function MapView({ map, steps, groups, selected, focus, onSelect }: Props) {
+export function MapView({ map, steps, groups, places, selected, focus, onSelect }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<Scene | null>(null);
   const ready = useRef<Promise<void> | null>(null);
@@ -86,19 +139,25 @@ export function MapView({ map, steps, groups, selected, focus, onSelect }: Props
 
     ready.current = app
       .init({ resizeTo: element, background: 0x1b3947, antialias: false, resolution: window.devicePixelRatio || 1, autoDensity: true })
-      .then(() => {
+      .then(() => Assets.load<Spritesheet>(new URL("sprites/atlas.json", document.baseURI).href).catch(() => null))
+      .then((loaded) => {
         if (disposed) {
           app.destroy(true);
           return;
         }
+        // Without the atlas the map falls back to flat colours instead of staying empty.
+        const sheet = loaded && loaded.textures && loaded.textureSource ? loaded : null;
+        if (sheet) sheet.textureSource.scaleMode = "nearest";
         element.appendChild(app.canvas);
         const world = new Container();
-        const terrain = new Graphics();
-        const paths = new Graphics();
+        const terrain = new Container();
+        const paths = new Container();
+        const nature = new Container();
+        const buildings = new Container();
         const camps = new Container();
-        world.addChild(terrain, paths, camps);
+        world.addChild(terrain, paths, nature, buildings, camps);
         app.stage.addChild(world);
-        scene.current = { app, world, terrain, paths, camps };
+        scene.current = { app, world, terrain, paths, nature, buildings, camps, sheet, natureAt: new Map() };
 
         const canvas = app.canvas;
         canvas.style.touchAction = "none";
@@ -154,53 +213,167 @@ export function MapView({ map, steps, groups, selected, focus, onSelect }: Props
     };
   }, []);
 
-  // Terrain: drawn once per map.
+  // Ground and everything that grows on it: built once per map.
   useEffect(() => {
     if (!map) return;
     void ready.current?.then(() => {
       const current = scene.current;
       if (!current) return;
-      const g = current.terrain;
-      g.clear();
-      for (let y = 0; y < map.height; y++) {
-        for (let x = 0; x < map.width; x++) {
+      for (const layer of [current.terrain, current.nature]) {
+        for (const child of layer.removeChildren()) child.destroy();
+      }
+      current.natureAt.clear();
+      const textures = current.sheet?.textures ?? {};
+      const fallback = new Graphics();
+      const marks = new Graphics();
+      const peaks = map.biome
+        .map((biome, index) => (map.biomes[biome] === "mountain" ? map.elevation[index] : -1))
+        .filter((height) => height >= 0)
+        .sort((a, b) => a - b);
+      const snowLine = peaks.length ? peaks[Math.floor(peaks.length * 0.7)] : Infinity;
+      // Diagonal by diagonal, so things further south cover what is behind them.
+      for (let sum = 0; sum <= map.width + map.height - 2; sum++) {
+        for (let x = Math.max(0, sum - map.height + 1); x <= Math.min(sum, map.width - 1); x++) {
+          const y = sum - x;
           const index = y * map.width + x;
-          const name = map.river[index] ? "river" : map.biomes[map.biome[index]];
-          const height = Math.max(0, Math.min(400, map.elevation[index]));
+          const biome = map.biomes[map.biome[index]];
+          const name = map.river[index] ? "river" : biome;
           const water = name === "ocean" || name === "coast" || name === "river";
-          const colour = shade(BIOME_COLOURS[name] ?? 0x555555, water ? 1 : 0.85 + height / 1300);
-          diamond(g, x, y);
-          g.fill(colour);
+          const height = Math.max(0, Math.min(400, map.elevation[index]));
+          const light = water ? 1 : Math.min(1, 0.8 + height / 1500);
+          const [cx, cy] = project(x, y);
+          const choices = GROUND[name] ?? ["grass"];
+          let ground = choices[tileNoise(x >> 1, y >> 1, 1) % choices.length];
+          if (name === "mountain" && map.elevation[index] >= snowLine) ground = "snow";
+          const texture = textures[ground];
+          if (texture) {
+            const tile = new Sprite(texture);
+            tile.anchor.set(0.5);
+            tile.position.set(cx, cy + TILE_H / 2);
+            tile.scale.set(tileNoise(x, y, 2) < 50 ? SPRITE_SCALE : -SPRITE_SCALE, SPRITE_SCALE);
+            tile.tint = shade(0xffffff, light);
+            current.terrain.addChild(tile);
+          } else {
+            diamond(fallback, x, y);
+            fallback.fill(shade(FALLBACK_COLOURS[name] ?? 0x555555, light));
+          }
+          if (water) continue;
           const deposit = map.deposit[index];
+          let object: string | null = null;
           if (deposit >= 0) {
-            const [cx, cy] = project(x, y);
-            g.circle(cx, cy + TILE_H / 2, 1.6).fill(DEPOSIT_COLOURS[deposit % DEPOSIT_COLOURS.length]);
+            object = DEPOSIT_SPRITES[map.deposits[deposit]?.id] ?? null;
+            if (!object) marks.circle(cx, cy + TILE_H / 2, 1.6).fill(DEPOSIT_COLOURS[deposit % DEPOSIT_COLOURS.length]);
+          } else {
+            const roll = tileNoise(x, y, 3);
+            let edge = 0;
+            for (const [candidate, chance] of NATURE[name] ?? []) {
+              edge += chance;
+              if (roll < edge) {
+                object = candidate;
+                break;
+              }
+            }
+          }
+          if (object && textures[object]) {
+            const sprite = new Sprite(textures[object]);
+            sprite.anchor.set(0.5, 1);
+            const size = SPRITE_SCALE * (deposit >= 0 ? 0.7 : 0.82 + tileNoise(x, y, 4) / 500);
+            sprite.position.set(cx, cy + TILE_H);
+            sprite.scale.set(tileNoise(x, y, 5) < 50 ? size : -size, size);
+            current.nature.addChild(sprite);
+            current.natureAt.set(index, sprite);
           }
         }
       }
+      current.terrain.addChildAt(fallback, 0);
+      current.terrain.addChild(marks);
       placed.current = false;
     });
   }, [map]);
 
-  // Paths: tiles that many feet have crossed.
+  // Paths: tiles that many feet have crossed. Where people walk, nothing grows.
   useEffect(() => {
     if (!map) return;
     void ready.current?.then(() => {
       const current = scene.current;
       if (!current) return;
-      const g = current.paths;
-      g.clear();
+      for (const child of current.paths.removeChildren()) child.destroy();
       if (steps.length !== map.width * map.height) return;
+      const texture = current.sheet?.textures.path;
+      const trail = map.path_levels?.trail || 250;
+      const road = map.path_levels?.road || 1000;
+      const fallback = new Graphics();
+      const taken = new Set<number>();
+      for (const group of groups) taken.add(group.y * map.width + group.x);
+      for (const place of places) for (const building of place.buildings) taken.add(building.y * map.width + building.x);
       for (let y = 0; y < map.height; y++) {
         for (let x = 0; x < map.width; x++) {
-          const count = steps[y * map.width + x];
-          if (count < 40) continue;
-          diamond(g, x, y, 2.5);
-          g.fill({ color: 0xd8c08a, alpha: Math.min(0.75, 0.12 + Math.log10(count / 40) * 0.25) });
+          const index = y * map.width + x;
+          const count = steps[index];
+          const grown = current.natureAt.get(index);
+          if (grown) grown.visible = count < trail && !taken.has(index);
+          if (count < trail / 2 || map.river[index]) continue;
+          const alpha = count >= road ? 1 : count >= trail ? 0.8 : 0.1 + (0.4 * count) / trail;
+          const [cx, cy] = project(x, y);
+          if (texture) {
+            const tile = new Sprite(texture);
+            tile.anchor.set(0.5);
+            tile.position.set(cx, cy + TILE_H / 2);
+            tile.scale.set(tileNoise(x, y, 6) < 50 ? SPRITE_SCALE : -SPRITE_SCALE, SPRITE_SCALE);
+            tile.alpha = alpha;
+            if (count >= road) tile.tint = 0xd9cdb4;
+            current.paths.addChild(tile);
+          } else {
+            diamond(fallback, x, y, 2.5);
+            fallback.fill({ color: 0xd8c08a, alpha: alpha * 0.7 });
+          }
         }
       }
+      current.paths.addChild(fallback);
     });
-  }, [map, steps]);
+  }, [map, steps, groups, places]);
+
+  // What people have built, is building, or has fallen into ruin.
+  useEffect(() => {
+    void ready.current?.then(() => {
+      const current = scene.current;
+      if (!current) return;
+      for (const child of current.buildings.removeChildren()) child.destroy();
+      const all: Building[] = places.flatMap((place) => place.buildings);
+      const g = new Graphics();
+      for (const building of all.sort((a, b) => a.y + a.x - (b.y + b.x))) {
+        const [cx, top] = project(building.x, building.y);
+        const cy = top + TILE_H / 2;
+        const [wall, roof] = BUILDING_COLOURS[building.type] ?? [0xc9895a, 0x8a4f38];
+        if (building.state === "ruin") {
+          g.rect(cx - 4, cy - 2, 3, 2).fill(0x6f6a60);
+          g.rect(cx + 1, cy - 3, 3, 3).fill(0x857f73);
+          g.rect(cx - 1, cy, 2, 1.5).fill(0x5d5850);
+        } else if (building.state === "site") {
+          g.rect(cx - 4, cy - 5, 8, 5).stroke({ color: 0xe0b45c, width: 0.8 });
+          g.moveTo(cx - 4, cy).lineTo(cx + 4, cy - 5).stroke({ color: 0xe0b45c, width: 0.8 });
+        } else if (building.type === "fire_place") {
+          g.ellipse(cx, cy, 4, 2).fill(0x5a4a34);
+          g.poly([cx - 2, cy, cx, cy - 6, cx + 2, cy]).fill(roof);
+          g.poly([cx - 1, cy, cx, cy - 3.5, cx + 1, cy]).fill(wall);
+        } else if (building.type === "storage_pit") {
+          g.ellipse(cx, cy, 5, 2.5).fill(roof);
+          g.ellipse(cx, cy - 0.5, 3.4, 1.6).fill(0x2b2118);
+        } else if (building.type === "drying_rack") {
+          g.rect(cx - 5, cy - 6, 1, 6).fill(roof);
+          g.rect(cx + 4, cy - 6, 1, 6).fill(roof);
+          g.rect(cx - 5, cy - 6, 10, 1).fill(wall);
+          g.rect(cx - 3, cy - 5, 1.5, 3).fill(0xb5654a);
+          g.rect(cx + 0.5, cy - 5, 1.5, 3).fill(0xb5654a);
+        } else {
+          g.rect(cx - 4, cy - 5, 8, 5).fill(wall);
+          g.poly([cx - 5.5, cy - 5, cx, cy - 10, cx + 5.5, cy - 5]).fill(roof);
+          g.rect(cx - 1, cy - 3, 2, 3).fill(0x2b2118);
+        }
+      }
+      current.buildings.addChild(g);
+    });
+  }, [places]);
 
   // Camps and settlements.
   useEffect(() => {

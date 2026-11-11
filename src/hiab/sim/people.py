@@ -94,6 +94,7 @@ class Society:
         self.next_clan = 1
         self.next_family = 1
         self.next_place = 1
+        self.next_building = 1
         self.extinct = False
         self.steps = np.zeros((world.map.height, world.map.width), dtype=np.int32)
         self.dirty_persons: set[int] = set()
@@ -105,6 +106,7 @@ class Society:
         self._effects: dict[int, tuple[dict[str, int], float, int]] = {}
         self.retired: dict[int, Clan] = {}  # clans dissolved since the last save
         self.dead: dict[int, Person] = {}  # people who died since the last save
+        self.vanished: set[int] = set()  # ruins that disappeared since the last save
 
     # ---- small helpers --------------------------------------------------
 
@@ -125,6 +127,10 @@ class Society:
     def living(self) -> int:
         return sum(len(self.clans[cid].members) for cid in self.clans)
 
+    def radius(self, clan: Clan) -> int:
+        """How far around its camp a clan gathers. Settled people range a little further."""
+        return self.p.forage_radius + (self.p.settled_forage_bonus if clan.settled else 0)
+
     def effects(self, clan: Clan) -> tuple[dict[str, int], float, int]:
         """Harvest percent per food, mortality factor and storage months of a clan."""
         cached = self._effects.get(clan.id)
@@ -143,6 +149,16 @@ class Society:
                     harvest[rid] += tech.effects.harvest_percent[rid]
             mortality = mortality * tech.effects.mortality_percent / 100
             storage += tech.effects.storage_months
+        if clan.settled:
+            seen: set[str] = set()
+            for building in self.places[clan.place]["buildings"]:
+                definition = packs.buildings.get(building["type"])
+                if building["state"] != "standing" or definition is None:
+                    continue
+                storage += definition.storage_months
+                if building["type"] not in seen:
+                    seen.add(building["type"])
+                    mortality = mortality * definition.mortality_percent / 100
         result = (harvest, mortality, storage)
         self._effects[clan.id] = result
         return result
@@ -296,10 +312,14 @@ class Society:
     def month(self, month: int) -> None:
         if self.extinct:
             return
+        if month == 0:
+            self.new_year()
         for clan_id in sorted(self.clans):
             clan = self.clans.get(clan_id)
             if clan is not None:
                 self.forage(clan)
+                if clan.settled:
+                    self.build(clan)
         for person_id in list(self.by_month[month]):
             person = self.persons.get(person_id)
             if person is not None and person.died is None:
@@ -337,7 +357,7 @@ class Society:
         harvest_percent, _mortality, storage_months = self.effects(clan)
         capacity = need * storage_months
         want = min(need + max(0, capacity - clan.food), adults * p.harvest_per_adult_month)
-        area = self.window(clan.y, clan.x, p.forage_radius)
+        area = self.window(clan.y, clan.x, self.radius(clan))
 
         raws: dict[str, np.ndarray] = {}
         foods: dict[str, int] = {}
@@ -351,6 +371,11 @@ class Society:
                 raws[rid], foods[rid] = raw, amount
         total = sum(foods.values())
         take_total = min(want, total)
+        if raws:
+            # People walk to where there is most to get. The footsteps become paths.
+            richest = np.sum([raws[rid] for rid in sorted(raws)], axis=0)
+            ty, tx = divmod(int(np.argmax(richest)), richest.shape[1])
+            self.walk(clan.y, clan.x, area[0].start + ty, area[1].start + tx, max(1, adults))
         gathered = 0
         for rid in sorted(foods):
             take = take_total * foods[rid] // total
@@ -641,7 +666,10 @@ class Society:
 
         hungry = self.unmet_average(clan) >= 15
         if clan.settled:
-            if hungry and world.roll("abandon_settlement", "group", clan.id, 0.5, []):
+            starving = self.unmet_average(clan) >= p.abandon_hunger_percent
+            if starving and world.roll(
+                "abandon_settlement", "group", clan.id, p.abandon_chance_per_year, []
+            ):
                 self.abandon_place(clan)
         elif (
             not hungry
@@ -680,26 +708,193 @@ class Society:
                 self.dissolve(clan, "clan_merged", {"host": host.name, "host_id": host.id})
 
     def settle(self, clan: Clan) -> None:
-        place_id = self.next_place
-        self.next_place += 1
-        name = self.make_name(clan.language)
-        self.places[place_id] = {
-            "id": place_id,
-            "y": clan.y,
-            "x": clan.x,
-            "name": name,
-            "founded": self.world.tick,
-            "abandoned": None,
-            "group": clan.id,
-        }
-        clan.settled, clan.place = True, place_id
-        self.dirty_places.add(place_id)
+        existing = [
+            self.places[pid]
+            for pid in sorted(self.places)
+            if self.places[pid]["y"] == clan.y
+            and self.places[pid]["x"] == clan.x
+            and self.places[pid]["abandoned"] is not None
+        ]
+        if existing:
+            # An abandoned place keeps its name, and whatever still stands there is used again.
+            place = existing[0]
+            place["abandoned"] = None
+            place["group"] = clan.id
+        else:
+            place = {
+                "id": self.next_place,
+                "y": clan.y,
+                "x": clan.x,
+                "name": self.make_name(clan.language),
+                "founded": self.world.tick,
+                "abandoned": None,
+                "group": clan.id,
+                "buildings": [],
+            }
+            self.next_place += 1
+            self.places[place["id"]] = place
+        clan.settled, clan.place = True, place["id"]
+        self._effects.pop(clan.id, None)
+        self.dirty_places.add(place["id"])
         self.dirty_clans.add(clan.id)
         self.world.count("settlements.founded")
         self.world.emit(
             "settlement_founded",
-            data={"clan": clan.name, "clan_id": clan.id, "place": name, "place_id": place_id},
+            data={
+                "clan": clan.name,
+                "clan_id": clan.id,
+                "place": place["name"],
+                "place_id": place["id"],
+                "resettled": bool(existing),
+            },
         )
+
+    # ---- building -------------------------------------------------------
+
+    def wanted_building(self, clan: Clan, place: dict[str, Any]) -> str | None:
+        """The most needed building the clan knows how to make, if any."""
+        buildings = self.world.packs.buildings
+        people = len(clan.members)
+        standing: dict[str, int] = {}
+        for building in place["buildings"]:
+            if building["state"] == "standing":
+                standing[building["type"]] = standing.get(building["type"], 0) + 1
+        for kind in sorted(buildings, key=lambda k: (buildings[k].houses == 0, k)):
+            definition = buildings[kind]
+            if any(required not in clan.techs for required in definition.requires):
+                continue
+            if definition.houses > 0:
+                needed = -(-people // definition.houses)
+            else:
+                needed = 1 + people // definition.per_people
+            if standing.get(kind, 0) < needed:
+                return kind
+        return None
+
+    def building_spot(self, place: dict[str, Any]) -> tuple[int, int]:
+        taken = {(b["y"], b["x"]) for b in place["buildings"]}
+        for reach in range(1, 5):
+            for dy in range(-reach, reach + 1):
+                for dx in range(-reach, reach + 1):
+                    if max(abs(dy), abs(dx)) != reach:
+                        continue
+                    y, x = place["y"] + dy, place["x"] + dx
+                    inside = 0 <= y < self.world.map.height and 0 <= x < self.world.map.width
+                    if inside and self.campable[y, x] and (y, x) not in taken:
+                        return y, x
+        return place["y"], place["x"]
+
+    def build(self, clan: Clan) -> None:
+        world, p = self.world, self.p
+        packs = world.packs
+        if not packs.buildings:
+            return
+        place = self.places[clan.place]
+        site = next((b for b in place["buildings"] if b["state"] == "site"), None)
+        unmet_now = clan.unmet[-1] if clan.unmet else 0
+        if site is None:
+            kind = self.wanted_building(clan, place)
+            if kind is None:
+                return
+            definition = packs.buildings[kind]
+            area = self.window(place["y"], place["x"], self.radius(clan))
+            for resource in sorted(definition.materials):
+                if int(world.stocks[resource][area].sum()) < 2 * definition.materials[resource]:
+                    return  # not enough material within reach
+            if not world.roll("build.start", "group", clan.id, p.build_start_chance_per_month, []):
+                return
+            for resource in sorted(definition.materials):
+                stock = world.stocks[resource][area].astype(np.int64)
+                total = int(stock.sum())
+                taken = stock * definition.materials[resource] // total
+                world.stocks[resource][area] = (stock - taken).astype(np.int32)
+                world.count(f"materials.{resource}.used", int(taken.sum()))
+            y, x = self.building_spot(place)
+            place["buildings"].append(
+                {
+                    "id": self.next_building,
+                    "type": kind,
+                    "y": y,
+                    "x": x,
+                    "started": world.tick,
+                    "finished": None,
+                    "state": "site",
+                    "progress": 0,
+                }
+            )
+            self.next_building += 1
+            self.dirty_places.add(place["id"])
+            world.count(f"buildings.{kind}.started")
+            world.emit(
+                "construction_started",
+                data={
+                    "clan": clan.name,
+                    "clan_id": clan.id,
+                    "place": place["name"],
+                    "place_id": place["id"],
+                    "building": kind,
+                },
+            )
+            return
+        if unmet_now >= 20:
+            return  # hungry people do not build
+        site["progress"] += len(self.adults(clan))
+        self.dirty_places.add(place["id"])
+        if site["progress"] >= packs.buildings[site["type"]].work:
+            site["state"], site["finished"] = "standing", world.tick
+            self._effects.pop(clan.id, None)
+            world.count(f"buildings.{site['type']}.finished")
+            world.emit(
+                "building_finished",
+                data={
+                    "clan": clan.name,
+                    "clan_id": clan.id,
+                    "place": place["name"],
+                    "place_id": place["id"],
+                    "building": site["type"],
+                },
+            )
+
+    def new_year(self) -> None:
+        """Footsteps fade, and what stands in abandoned places slowly falls apart."""
+        p = self.p
+        self.steps = (
+            self.steps.astype(np.int64) * (100 - p.steps_decay_percent_per_year) // 100
+        ).astype(np.int32)
+        for place_id in sorted(self.places):
+            place = self.places[place_id]
+            if place["abandoned"] is None:
+                continue
+            # Ruins do not last for ever either: after a long time nothing is left to see.
+            kept = []
+            for building in place["buildings"]:
+                gone = building["state"] == "ruin" and self.world.roll(
+                    "ruin_vanishes", "place", place_id, 0.03, [], detail=True
+                )
+                if gone:
+                    self.vanished.add(building["id"])
+                else:
+                    kept.append(building)
+            if len(kept) != len(place["buildings"]):
+                place["buildings"] = kept
+                self.dirty_places.add(place_id)
+            for building in place["buildings"]:
+                if building["state"] == "ruin":
+                    continue
+                if self.world.roll("building_decay", "place", place_id, p.ruin_chance_per_year, []):
+                    was_site = building["state"] == "site"
+                    building["state"] = "ruin"
+                    self.dirty_places.add(place_id)
+                    self.world.count("buildings.ruined")
+                    if not was_site:
+                        self.world.emit(
+                            "building_ruined",
+                            data={
+                                "place": place["name"],
+                                "place_id": place_id,
+                                "building": building["type"],
+                            },
+                        )
 
     def abandon_place(self, clan: Clan, quiet: bool = False) -> None:
         if not clan.settled:
@@ -708,6 +903,7 @@ class Society:
         place["abandoned"] = self.world.tick
         self.dirty_places.add(place["id"])
         clan.settled, clan.place = False, 0
+        self._effects.pop(clan.id, None)
         self.dirty_clans.add(clan.id)
         self.world.count("settlements.abandoned")
         if not quiet:
@@ -767,7 +963,7 @@ class Society:
         """Best camp tile within reach: (score, y, x). The current tile is not a candidate."""
         world, p = self.world, self.p
         reach = p.move_radius
-        outer = self.window(clan.y, clan.x, reach + p.forage_radius)
+        outer = self.window(clan.y, clan.x, reach + p.forage_radius)  # judged as a wanderer
         harvest_percent, _m, _s = self.effects(clan)
         value = np.zeros(world.stocks[self.food_ids[0]][outer].shape, dtype=np.int64)
         for rid in self.food_ids:
@@ -827,6 +1023,8 @@ class Society:
 
     def maybe_migrate(self, clan: Clan, month: int) -> None:
         world, p = self.world, self.p
+        if clan.settled:
+            return  # settled people stay until hunger makes them give the place up
         unmet_now = clan.unmet[-1] if clan.unmet else 0
         factors: list[tuple[str, float]] = []
         if unmet_now > 0:
@@ -901,6 +1099,19 @@ class Society:
             )
         )
         rows.append((tick, "tiles.walked", "world", 0, float(int((self.steps > 0).sum()))))
+        trail = int((self.steps >= self.p.path_trail_steps).sum())
+        road = int((self.steps >= self.p.path_road_steps).sum())
+        rows.append((tick, "paths.trail_tiles", "world", 0, float(trail - road)))
+        rows.append((tick, "paths.road_tiles", "world", 0, float(road)))
+        standing = ruins = sites = 0
+        for place_id in sorted(self.places):
+            for building in self.places[place_id]["buildings"]:
+                standing += building["state"] == "standing"
+                ruins += building["state"] == "ruin"
+                sites += building["state"] == "site"
+        rows.append((tick, "buildings.standing", "world", 0, float(standing)))
+        rows.append((tick, "buildings.ruins", "world", 0, float(ruins)))
+        rows.append((tick, "buildings.sites", "world", 0, float(sites)))
 
     def clear_dirty(self) -> None:
         self.dirty_persons.clear()
@@ -909,6 +1120,7 @@ class Society:
         self.new_discoveries.clear()
         self.retired = {}
         self.dead = {}
+        self.vanished = set()
 
     def dump_state(self) -> dict[str, Any]:
         return {
@@ -916,6 +1128,7 @@ class Society:
             "next_clan": self.next_clan,
             "next_family": self.next_family,
             "next_place": self.next_place,
+            "next_building": self.next_building,
             "extinct": self.extinct,
             "clans": [
                 {
@@ -947,6 +1160,7 @@ class Society:
         self.next_clan = state["next_clan"]
         self.next_family = state["next_family"]
         self.next_place = state["next_place"]
+        self.next_building = state.get("next_building", 1)
         self.extinct = state["extinct"]
         self.clans = {}
         for raw in state["clans"]:
@@ -967,7 +1181,11 @@ class Society:
                 place=raw["place"],
                 famine=raw["famine"],
             )
-        self.places = {raw["id"]: dict(raw) for raw in state["places"]}
+        self.places = {}
+        for raw in state["places"]:
+            place = dict(raw)
+            place["buildings"] = [dict(b) for b in raw.get("buildings", [])]
+            self.places[place["id"]] = place
         self.persons = {}
         self.by_month = {month: [] for month in range(12)}
         for person in sorted(persons, key=lambda item: item.id):

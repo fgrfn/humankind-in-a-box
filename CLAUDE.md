@@ -29,6 +29,7 @@ The full specification is `docs/SPEC.md` (German). Follow-up decisions are in `d
 - `src/hiab/render.py`: turns stored events into German or English text.
 - `frontend/`: React, TypeScript, Vite and PixiJS. The build output is committed to `src/hiab/web/` so installing the Python package needs no Node.
 - `src/hiab/cli.py`: the `hiab` command.
+- `art/` and `tools/build_atlas.py`: generated picture sheets and the script that cuts them into `frontend/public/sprites/atlas.png` and `atlas.json`. After changing a sheet or the manifest: run the script, rebuild the frontend, commit both.
 
 ## Working here
 
@@ -37,5 +38,5 @@ The full specification is `docs/SPEC.md` (German). Follow-up decisions are in `d
 - The API never writes. The worker is the only writer of the database.
 - Schema changes are new entries in `MIGRATIONS`, never edits of old ones once released. New tables that hold world content must be added to `CONTENT_TABLES`.
 - Any change to the simulation must keep `tests/test_determinism.py` green, including save, load and continue.
-- Balance lives in the data pack (`life.yaml`, `technologies.yaml`, `resources.yaml`). After changing it, run several seeds for a few hundred years and look at `hiab status` before trusting it.
+- Balance lives in the data pack (`life.yaml`, `technologies.yaml`, `resources.yaml`, `buildings.yaml`). After changing it, run several seeds for a few hundred years and look at `hiab status` before trusting it.
 - Open points (license, name checks) are the owner's to decide. Ask instead of deciding.

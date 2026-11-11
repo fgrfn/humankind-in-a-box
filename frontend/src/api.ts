@@ -35,6 +35,30 @@ export interface WorldMap {
   river: number[];
   deposit: number[];
   steps: number[];
+  path_levels: { trail: number; road: number };
+}
+
+export interface Building {
+  id: number;
+  type: string;
+  name: string;
+  y: number;
+  x: number;
+  state: "site" | "standing" | "ruin";
+  started_year: number;
+  finished_year: number | null;
+  progress_percent: number;
+}
+
+export interface Place {
+  id: number;
+  name: string;
+  y: number;
+  x: number;
+  founded_year: number;
+  abandoned_year: number | null;
+  group_id: number;
+  buildings: Building[];
 }
 
 export interface Technology {
@@ -56,6 +80,7 @@ export interface Group {
   founded_year: number;
   population: number;
   technologies: Technology[];
+  buildings: Building[];
   members?: { id: number; name: string; sex: "f" | "m"; age: number; children: number }[];
 }
 
@@ -106,6 +131,7 @@ export const api = {
   stats: (world: number, lang: Lang) => get<Stats>(`/worlds/${world}/stats?lang=${lang}`),
   map: (world: number) => get<WorldMap>(`/worlds/${world}/map`),
   steps: (world: number) => get<{ values: number[] }>(`/worlds/${world}/layers/steps`),
+  places: (world: number, lang: Lang) => get<Place[]>(`/worlds/${world}/places?lang=${lang}`),
   groups: (world: number, lang: Lang) => get<Group[]>(`/worlds/${world}/groups?lang=${lang}`),
   group: (world: number, id: number, lang: Lang) => get<Group>(`/worlds/${world}/groups/${id}?lang=${lang}`),
   events: (world: number, lang: Lang, minImportance: number, limit = 80) =>

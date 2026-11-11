@@ -5,21 +5,23 @@
 - Stufe 0 (Fundament) ist gemergt.
 - Stufe 1a (Menschen) ist umgesetzt: Personen, Familien, Clans, Nahrungssuche, Hunger, Wanderung, Entdeckungen, Wissensweitergabe, Clan-Spaltung und -Verschmelzung, erste Siedlungen.
 - Stufe 1b (API, Kartenansicht, erste Statistik, Docker-Image) ist umgesetzt. Damit ist Stufe 1 bis auf die Feinabstimmung abgeschlossen.
-- Als Nächstes Stufe 2: Völker, voller Entdeckungsgraph, Wissensverlust, Handel, Kulturen mit Sprache, Wege und Gebäude.
-- Noch offen: Lizenz-Entscheidung, Prüfung von PyPI-Name und Domain, Test der Grafik-Prompts.
+- Stufe 2a (Wege und Gebäude) ist umgesetzt: Trittzähler verblassen, aus viel begangenen Kacheln werden Pfade und Wege. Sesshafte Clans bauen nach und nach (Baustelle, fertiges Gebäude, Ruine), Gebäude wirken auf Sterblichkeit und Vorrat. Alte Alltagsereignisse werden ausgedünnt (`HIAB_EVENT_DETAIL_YEARS`, Vorgabe 100).
+- Die Karte zeigt echte Grafik: 16 Geländekacheln und 8 Naturobjekte aus drei erzeugten Bögen, zugeschnitten mit `tools/build_atlas.py`. Gebäude, Lager und Menschen sind noch gezeichnete Platzhalter, bis ihre Bögen da sind.
+- Als Nächstes der Rest von Stufe 2: Völker, voller Entdeckungsgraph, Wissensverlust, Handel, Kulturen mit Sprache.
+- Noch offen: Lizenz-Entscheidung, Prüfung von PyPI-Name und Domain, Bögen für Gebäude und Menschen.
 
 ## Was es gibt
 
 - CLI `hiab`: `run`, `serve`, `new-world`, `simulate`, `verify`, `events`, `status`, `check-packs`.
 - HTTP-API unter `/api/v1` (nur lesend): Welt, flache Kennzahlen, Karte, Ebenen, Clans, Personen, Chronik in Deutsch und Englisch, „Warum ist das passiert?“, Zeitreihen, Live-Ereignisse als Server-Sent Events. Doku unter `/api/docs`.
-- Weboberfläche: isometrische Karte mit Platzhalter-Grafik, Lager und Siedlungen, Trampelpfade aus den Trittzählern, Chronik mit Live-Nachlauf, Statistik-Kacheln mit Verlauf, Clan-Ansicht, Sprachumschaltung.
+- Weboberfläche: isometrische Karte mit Gelände- und Natur-Sprites, Lager, Siedlungen, Gebäude, Baustellen und Ruinen, Pfade und Wege aus den Trittzählern, Chronik mit Live-Nachlauf, Statistik-Kacheln mit Verlauf, Clan-Ansicht, Sprachumschaltung.
 - `hiab run` startet Simulation und Webserver als zwei Prozesse. Dockerfile vorhanden.
 - Konfiguration in vier Ebenen, Programm-Log als JSON-Zeilen.
 - Zufallsströme je Teilsystem, Weltgenerator rein mit Ganzzahlen.
 - Datenpakete mit Schema-Prüfung und `packs/local/overrides.yaml`. Das Basispaket enthält fünf Bestände (Wildpflanzen, Wild, Fisch, Holz, Boden), sechs Vorkommen, sechs Naturereignis-Regeln, zehn Entdeckungen und die Lebensparameter in `life.yaml`.
 - Tick-Schleife: Klimadrift, saisonale Regeln je Region, Nachwachsen der Bestände, monatlicher Schritt der Gesellschaft.
 - Jeder Wurf läuft über `World.roll` oder `World.draw_int`, wird in `world_log` protokolliert und in `metrics` gezählt.
-- SQLite mit Migrationen, Speichern und Laden, inklusive Personen, Gruppen, Entdeckungen, Orten und Trittzählern je Kachel.
+- SQLite mit Migrationen, Speichern und Laden, inklusive Personen, Gruppen, Entdeckungen, Orten, Gebäuden und Trittzählern je Kachel.
 
 ## Wie die Menschen funktionieren
 
@@ -37,8 +39,8 @@ Zehn Seeds über 400 Jahre auf einer Karte von 64 x 64 Kacheln: alle zehn Welten
 
 ## Bekannte Schwächen
 
-- Siedlungen werden zu oft gegründet und wieder aufgegeben.
-- Geburten, Tode und Wanderungen erzeugen sehr viele Ereignisse niedriger Wichtigkeit. Die Verdichtung alter Ereignisse fehlt noch.
+- Siedlungen halten ohne Ackerbau im Schnitt nur etwa eine Generation, dann treibt der Hunger die Leute weiter. Das ist für Jäger und Sammler plausibel, sorgt aber für viele Ruinen. Dauerhafte Orte kommen mit dem Ackerbau.
+- Objekte auf der Karte (Bäume, Felsen) sind reine Anzeige aus Biom und Koordinate, sie hängen noch nicht am Holzbestand der Kachel.
 - Wissensverlust gibt es noch nicht (Stufe 2).
 - Familien sind bisher nur eine Haushaltsnummer an der Person, keine eigene Gruppe in der Datenbank.
 - Ab einigen tausend Personen wird die Simulation langsam, das Zusammenfassen entfernter Gruppen fehlt noch.

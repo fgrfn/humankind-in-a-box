@@ -28,3 +28,11 @@ contact_radius: 8
 contact_learning_chance_per_year: 0.02
 settle_years: 5
 settle_chance_per_year: 0.2
+settled_forage_bonus: 1
+abandon_hunger_percent: 25
+abandon_chance_per_year: 0.3
+steps_decay_percent_per_year: 8
+path_trail_steps: 250
+path_road_steps: 1000
+build_start_chance_per_month: 0.25
+ruin_chance_per_year: 0.15

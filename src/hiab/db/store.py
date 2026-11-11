@@ -176,6 +176,22 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (world_id, layer)
     ) WITHOUT ROWID;
     """,
+    """
+    CREATE TABLE buildings (
+        world_id INTEGER NOT NULL,
+        id INTEGER NOT NULL,
+        place_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        y INTEGER NOT NULL,
+        x INTEGER NOT NULL,
+        started INTEGER NOT NULL,
+        finished INTEGER,
+        state TEXT NOT NULL,
+        progress INTEGER NOT NULL,
+        PRIMARY KEY (world_id, id)
+    ) WITHOUT ROWID;
+    CREATE INDEX buildings_by_place ON buildings (world_id, place_id);
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -194,6 +210,7 @@ CONTENT_TABLES: dict[str, str] = {
     "discoveries": "world_id, group_id, technology",
     "places": "world_id, id",
     "tile_layers": "world_id, layer",
+    "buildings": "world_id, id",
 }
 
 
@@ -300,7 +317,7 @@ class Store:
         )
         return True
 
-    def save(self, world: World, world_log_years: int = 50) -> None:
+    def save(self, world: World, world_log_years: int = 50, event_detail_years: int = 100) -> None:
         """Write buffered rows and the full state in one transaction."""
         started = time.perf_counter()
         buffers = world.buffers
@@ -336,6 +353,12 @@ class Store:
             self.conn.execute(
                 "DELETE FROM world_log WHERE world_id = ? AND tick < ?",
                 (world.id, world.tick - world_log_years * DAYS_PER_YEAR),
+            )
+            # Everyday events (births, deaths, wanderings) are kept in detail only for a
+            # while. Their counts live on in the metrics, the people in the persons table.
+            self.conn.execute(
+                "DELETE FROM events WHERE world_id = ? AND importance = 1 AND tick < ?",
+                (world.id, world.tick - event_detail_years * DAYS_PER_YEAR),
             )
             self.conn.executemany(
                 "INSERT OR REPLACE INTO tile_stocks VALUES (?,?,?)",
@@ -432,6 +455,29 @@ class Store:
                     place["group"],
                 )
                 for place in (society.places[pid] for pid in sorted(society.dirty_places))
+            ],
+        )
+        self.conn.executemany(
+            "DELETE FROM buildings WHERE world_id = ? AND id = ?",
+            [(world.id, building_id) for building_id in sorted(society.vanished)],
+        )
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO buildings VALUES (?,?,?,?,?,?,?,?,?,?)",
+            [
+                (
+                    world.id,
+                    building["id"],
+                    place_id,
+                    building["type"],
+                    building["y"],
+                    building["x"],
+                    building["started"],
+                    building["finished"],
+                    building["state"],
+                    building["progress"],
+                )
+                for place_id in sorted(society.dirty_places)
+                for building in society.places[place_id]["buildings"]
             ],
         )
         self.conn.execute(

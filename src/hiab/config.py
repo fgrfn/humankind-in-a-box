@@ -39,6 +39,7 @@ class Settings(BaseModel):
     log_to_file: bool = True
     world_log: Literal["chronicle", "decisions", "full"] = "decisions"
     world_log_years: int = Field(50, ge=1)
+    event_detail_years: int = Field(100, ge=1, description="How long everyday events are kept")
 
     # New world (fixed once the world exists)
     seed: int | None = Field(None, ge=0, lt=2**63)
