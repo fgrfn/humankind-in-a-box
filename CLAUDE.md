@@ -25,11 +25,16 @@ The full specification is `docs/SPEC.md` (German). Follow-up decisions are in `d
 - `src/hiab/sim/`: `rng.py` (streams), `worldgen.py` (map), `engine.py` (World, tick loop, rolls), `people.py` (persons, families, clans, foraging, migration, discoveries, settlements).
 - `src/hiab/db/store.py`: SQLite schema, migrations, save and load, table digests.
 - `src/hiab/worker.py`: pacing against real time, `simulate` for fast runs.
+- `src/hiab/api/`: `app.py` (read-only HTTP API under `/api/v1`, server-sent events, serves the frontend), `server.py` (runs it in its own process).
+- `src/hiab/render.py`: turns stored events into German or English text.
+- `frontend/`: React, TypeScript, Vite and PixiJS. The build output is committed to `src/hiab/web/` so installing the Python package needs no Node.
 - `src/hiab/cli.py`: the `hiab` command.
 
 ## Working here
 
 - `uv sync`, then `uv run pytest`, `uv run ruff check .`, `uv run ruff format .`, `uv run mypy`.
+- Frontend: `cd frontend && npm ci && npm run build`. Rebuild and commit `src/hiab/web/` whenever `frontend/src` changes. Check the page in a browser at phone and desktop width before calling UI work done.
+- The API never writes. The worker is the only writer of the database.
 - Schema changes are new entries in `MIGRATIONS`, never edits of old ones once released. New tables that hold world content must be added to `CONTENT_TABLES`.
 - Any change to the simulation must keep `tests/test_determinism.py` green, including save, load and continue.
 - Balance lives in the data pack (`life.yaml`, `technologies.yaml`, `resources.yaml`). After changing it, run several seeds for a few hundred years and look at `hiab status` before trusting it.

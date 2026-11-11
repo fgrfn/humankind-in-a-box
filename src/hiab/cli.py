@@ -14,7 +14,8 @@ from hiab.config import ConfigError, Settings, load_settings
 from hiab.db.store import Store, WorldNotFound, table_digests
 from hiab.logging_setup import get_logger, setup_logging
 from hiab.packs import PackError, load_packs
-from hiab.sim.engine import DAYS_PER_MONTH, DAYS_PER_YEAR
+from hiab.render import date_label, render_event
+from hiab.sim.engine import DAYS_PER_YEAR
 from hiab.worker import Worker, open_world, simulate
 
 log = get_logger("cli")
@@ -45,7 +46,26 @@ def _settings(args: argparse.Namespace, to_file: bool) -> Settings:
 def cmd_run(args: argparse.Namespace) -> int:
     settings = _settings(args, to_file=True)
     log.info("starting", extra={"version": __version__, "settings": settings.public_dict()})
-    Worker(settings).run(args.seed)
+    api_process = None
+    if settings.api and not args.no_api:
+        from hiab.api.server import start_api_process
+
+        api_process = start_api_process(settings, settings.db_path)
+    try:
+        Worker(settings).run(args.seed)
+    finally:
+        if api_process is not None:
+            api_process.terminate()
+            api_process.join(timeout=5)
+    return 0
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Serve an existing database without running the world."""
+    settings = _settings(args, to_file=False)
+    from hiab.api.server import serve
+
+    serve(settings.model_dump(mode="json"), args.db or str(settings.db_path))
     return 0
 
 
@@ -100,20 +120,8 @@ def cmd_events(args: argparse.Namespace) -> int:
         conn.close()
     language = args.lang or settings.language
     for tick, event_type, data_json in reversed(rows):
-        data = json.loads(data_json)
-        definition = packs.events.get(event_type)
-        template = getattr(definition.text, language) if definition else event_type
-        values = {key: str(value) for key, value in data.items()}
-        if "region" in data:
-            values["region"] = f"Region {data['region']}"
-        technology = packs.technologies.get(str(data.get("tech")))
-        if technology is not None:
-            values["tech"] = getattr(technology.name, language)
-        text = template
-        for key in sorted(values):
-            text = text.replace("{" + key + "}", values[key])
-        year, day = divmod(tick, DAYS_PER_YEAR)
-        print(f"{year:>5}-{day // DAYS_PER_MONTH + 1:02}-{day % DAYS_PER_MONTH + 1:02}  {text}")
+        text = render_event(packs, event_type, json.loads(data_json), language)
+        print(f"{date_label(tick)}  {text}")
     return 0
 
 
@@ -194,7 +202,16 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--seed", type=int, help="seed if a new world has to be created")
     run.add_argument("--pace", type=float, help="world days per real minute")
     run.add_argument("--port", type=int)
+    run.add_argument(
+        "--no-api", dest="no_api", action="store_true", help="run without the web server"
+    )
     run.set_defaults(func=cmd_run)
+
+    serve = sub.add_parser("serve", help="serve the web view for a database, without running it")
+    _common(serve)
+    serve.add_argument("--db", help="database file (default: the one in the data folder)")
+    serve.add_argument("--port", type=int)
+    serve.set_defaults(func=cmd_serve)
 
     new_world = sub.add_parser("new-world", help="archive the active world and start a new one")
     _common(new_world)

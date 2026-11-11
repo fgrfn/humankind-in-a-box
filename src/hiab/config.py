@@ -49,7 +49,8 @@ class Settings(BaseModel):
 
     # Running world
     pace: float = Field(120.0, gt=0, description="World days (ticks) per real minute")
-    autosave_seconds: int = Field(120, ge=5)
+    autosave_seconds: int = Field(15, ge=2)
+    api: bool = True
 
     # Reserved for later stages; accepted now so config files stay valid.
     interventions: bool = False

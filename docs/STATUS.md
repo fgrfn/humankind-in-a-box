@@ -4,12 +4,16 @@
 
 - Stufe 0 (Fundament) ist gemergt.
 - Stufe 1a (Menschen) ist umgesetzt: Personen, Familien, Clans, Nahrungssuche, Hunger, Wanderung, Entdeckungen, Wissensweitergabe, Clan-Spaltung und -Verschmelzung, erste Siedlungen.
-- Als Nächstes Stufe 1b: API-Server, Event-Kanal, Kartenansicht, Grundkacheln der Statistik, Docker-Image.
+- Stufe 1b (API, Kartenansicht, erste Statistik, Docker-Image) ist umgesetzt. Damit ist Stufe 1 bis auf die Feinabstimmung abgeschlossen.
+- Als Nächstes Stufe 2: Völker, voller Entdeckungsgraph, Wissensverlust, Handel, Kulturen mit Sprache, Wege und Gebäude.
 - Noch offen: Lizenz-Entscheidung, Prüfung von PyPI-Name und Domain, Test der Grafik-Prompts.
 
 ## Was es gibt
 
-- CLI `hiab`: `run`, `new-world`, `simulate`, `verify`, `events`, `status`, `check-packs`.
+- CLI `hiab`: `run`, `serve`, `new-world`, `simulate`, `verify`, `events`, `status`, `check-packs`.
+- HTTP-API unter `/api/v1` (nur lesend): Welt, flache Kennzahlen, Karte, Ebenen, Clans, Personen, Chronik in Deutsch und Englisch, „Warum ist das passiert?“, Zeitreihen, Live-Ereignisse als Server-Sent Events. Doku unter `/api/docs`.
+- Weboberfläche: isometrische Karte mit Platzhalter-Grafik, Lager und Siedlungen, Trampelpfade aus den Trittzählern, Chronik mit Live-Nachlauf, Statistik-Kacheln mit Verlauf, Clan-Ansicht, Sprachumschaltung.
+- `hiab run` startet Simulation und Webserver als zwei Prozesse. Dockerfile vorhanden.
 - Konfiguration in vier Ebenen, Programm-Log als JSON-Zeilen.
 - Zufallsströme je Teilsystem, Weltgenerator rein mit Ganzzahlen.
 - Datenpakete mit Schema-Prüfung und `packs/local/overrides.yaml`. Das Basispaket enthält fünf Bestände (Wildpflanzen, Wild, Fisch, Holz, Boden), sechs Vorkommen, sechs Naturereignis-Regeln, zehn Entdeckungen und die Lebensparameter in `life.yaml`.
@@ -40,6 +44,11 @@ Zehn Seeds über 400 Jahre auf einer Karte von 64 x 64 Kacheln: alle zehn Welten
 - Ab einigen tausend Personen wird die Simulation langsam, das Zusammenfassen entfernter Gruppen fehlt noch.
 
 ## Abweichungen von der Spezifikation
+
+- Es gibt noch keinen Event-Kanal zwischen Worker und API. Der Worker speichert alle 15 Sekunden, die API liest die Datenbank. Die Anzeige hängt der Simulation also bis zu 15 Sekunden nach.
+- Live-Ereignisse gibt es als Server-Sent Events, WebSocket fehlt noch.
+- Die API hat noch keine schreibenden Endpunkte und keine Token-Prüfung.
+- Der gebaute Frontend-Stand liegt im Repo unter `src/hiab/web/`.
 
 - Eingebaute Datenpakete liegen in `src/hiab/data/packs/` statt in `packs/` im Wurzelverzeichnis, damit eine pipx-Installation sie enthält.
 - Biome sind vorerst Teil des Kerns, weil der Weltgenerator sie braucht.

@@ -33,6 +33,38 @@ jobs:
           name: digest-${{ matrix.os }}
           path: digest-${{ matrix.os }}.json
 
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - name: Built frontend is committed
+        run: test -f src/hiab/web/index.html
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t hiab:ci .
+      - name: Container serves a world
+        run: |
+          docker run -d --name hiab -p 2222:2222 -e HIAB_SEED=42 -e HIAB_PACE=6000 hiab:ci
+          for attempt in $(seq 1 30); do
+            if curl -fs http://127.0.0.1:2222/api/v1/worlds/1/stats; then break; fi
+            sleep 2
+          done
+          curl -fs http://127.0.0.1:2222/api/v1/worlds/1/stats | grep -q '"seed":42'
+          curl -fs http://127.0.0.1:2222/ | grep -q "Humankind in a Box"
+          docker logs hiab | tail -5
+
   same-world-everywhere:
     needs: test
     runs-on: ubuntu-latest
