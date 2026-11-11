@@ -322,12 +322,12 @@ Alle Sprites einschließlich Gelände werden per Bildgenerator entworfen (so mac
 1. Bogen mit Stil-Prompt erzeugen, immer zusammen mit einem schon freigegebenen Bogen als Referenzbild. Rohbögen nach `art/sheets/`, Namen der Bilder je Bogen in `art/manifest.yaml`.
 2. Das Skript findet die Bilder selbst (transparenter Hintergrund), misst bei jedem die Bodenraute aus und skaliert mit Flächenmittel auf die Zielgröße.
 3. Geländekacheln: nur das Innere der Oberseite wird auf eine exakte Raute von 64 × 32 gezogen, Kontur und Erdrand fallen weg. So schließen Kacheln nahtlos an.
-4. Objekte: Kontur und Erdrand des Bodenstücks fallen weg, der blanke Boden blendet zum Rand hin aus, was darauf steht, bleibt.
+4. Objekte: Kontur und Erdrand des Bodenstücks fallen weg, der blanke Boden blendet zum Rand hin aus, was darauf steht, bleibt. Figuren (`kind: figure`) verlieren ihren Boden ganz, damit sie auf jeder Kachel stehen können.
 5. Atlas-PNG plus JSON nach `frontend/public/sprites/`, beides committen (der Build braucht dann kein Python-Bildwerkzeug).
 
 `uv run python tools/build_atlas.py`, danach das Frontend neu bauen.
 
-**Erprobt (vier Bögen, November 2026):** Acht Bilder je Bogen in zwei Reihen zu vier funktionieren zuverlässig, sechzehn nicht. Transparenter Hintergrund funktioniert und ist besser als Magenta. Der Generator hält kein exaktes Pixelraster ein, deshalb misst das Skript und verlässt sich auf keine festen Zellgrößen. Objekte kommen immer auf einem Bodenstück, das ist in Ordnung, das Skript entfernt es.
+**Erprobt (fünf Bögen, November 2026):** Acht Bilder je Bogen in zwei Reihen zu vier funktionieren zuverlässig, sechzehn nicht. Transparenter Hintergrund funktioniert und ist besser als Magenta. Der Generator hält kein exaktes Pixelraster ein, deshalb misst das Skript und verlässt sich auf keine festen Zellgrößen. Objekte kommen immer auf einem Bodenstück, das ist in Ordnung, das Skript entfernt es.
 
 **Stil-Prompt (immer voranstellen, einen freigegebenen Bogen als Referenzbild anhängen):**
 

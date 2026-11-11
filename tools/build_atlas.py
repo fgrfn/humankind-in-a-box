@@ -96,7 +96,7 @@ def cut_terrain(picture: np.ndarray) -> np.ndarray:
     return tile
 
 
-def cut_object(picture: np.ndarray) -> np.ndarray:
+def cut_object(picture: np.ndarray, keep_ground: bool = True) -> np.ndarray:
     cx, cy, width = ground(picture[..., 3] > 128)
     scale = TILE_W / (width * INSET)
     above = int(np.ceil(cy * scale)) + 1
@@ -121,6 +121,11 @@ def cut_object(picture: np.ndarray) -> np.ndarray:
         is_ground = nearest < 36
     else:
         is_ground = np.zeros_like(solid)
+    if not keep_ground:
+        # People wear hides and stand on grass: skin and cloth can be as light as
+        # a tuft of grass, so here the ground is told by being green, not by shade.
+        red, green, blue = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+        is_ground = (green >= red - 20) & (blue * 100 < green * 62)
 
     below = ys > centre_y
 
@@ -135,9 +140,13 @@ def cut_object(picture: np.ndarray) -> np.ndarray:
 
     # Inside the tile: bare ground fades out towards the edge so the tile below
     # shows through; whatever stands there stays.
-    fade = np.clip((1.0 - distance) / 0.45, 0.0, 1.0)
+    fade = np.clip((1.0 - distance) / 0.45, 0.0, 1.0) if keep_ground else 0.0
     inside = distance <= 1.0
     alpha = np.where(inside & is_ground & (below | open_air), alpha * fade, alpha)
+
+    if not keep_ground:
+        # A figure keeps no ground at all, not even the corners of its patch.
+        alpha = np.where(is_ground & (ys > centre_y - TILE_H * 0.6), 0, alpha)
 
     # Outside the tile, below its middle: outline and earth rim, always dropped.
     alpha = np.where(~inside & below, 0, alpha)
@@ -161,8 +170,38 @@ def cut_object(picture: np.ndarray) -> np.ndarray:
             if (dy, dx) != (0, 0)
         )
         sprite[edge & (neighbours < 3)] = 0
+    if not keep_ground:
+        sprite[~largest_parts(sprite[..., 3] > 96)] = 0
     rows = np.flatnonzero((sprite[..., 3] > 0).any(axis=1))
-    return sprite[int(rows[0]) :] if len(rows) else sprite
+    if not len(rows):
+        return sprite
+    if keep_ground:
+        return sprite[int(rows[0]) :]
+    return sprite[int(rows[0]) : int(rows[-1]) + 1]  # a figure stands on its feet
+
+
+def largest_parts(solid: np.ndarray) -> np.ndarray:
+    """Keep the big connected shapes; tufts of grass left from the ground go."""
+    labels = np.zeros(solid.shape, dtype=np.int32)
+    sizes = [0]
+    for start in zip(*np.nonzero(solid), strict=True):
+        if labels[start]:
+            continue
+        label, stack, size = len(sizes), [start], 0
+        labels[start] = label
+        while stack:
+            y, x = stack.pop()
+            size += 1
+            for ny in (y - 1, y, y + 1):
+                for nx in (x - 1, x, x + 1):
+                    inside = 0 <= ny < solid.shape[0] and 0 <= nx < solid.shape[1]
+                    if inside and solid[ny, nx] and not labels[ny, nx]:
+                        labels[ny, nx] = label
+                        stack.append((ny, nx))
+        sizes.append(size)
+    keep = np.array([size >= max(sizes) * 0.15 for size in sizes])
+    keep[0] = False
+    return keep[labels]
 
 
 def main() -> int:
@@ -186,7 +225,10 @@ def main() -> int:
                 print(f"{sheet['file']}: the name '{name}' is used twice", file=sys.stderr)
                 return 1
             picture = pixels[top:bottom, left:right]
-            cut = cut_terrain(picture) if sheet["kind"] == "terrain" else cut_object(picture)
+            if sheet["kind"] == "terrain":
+                cut = cut_terrain(picture)
+            else:
+                cut = cut_object(picture, keep_ground=sheet["kind"] == "object")
             sprites[name] = (sheet["kind"], cut)
 
     # Simple shelf packing: ground tiles first, then objects sorted by height.
