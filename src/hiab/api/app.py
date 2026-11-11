@@ -364,6 +364,51 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             "discoveries": row["discoveries"],
         }
 
+    @api.get("/worlds/{world_id}/technologies")
+    def technologies(
+        world_id: int, conn: Db, lang: Lang = default_language
+    ) -> list[dict[str, Any]]:
+        """Everything that can be discovered, with when it was first found and who knows it."""
+        world_row(conn, world_id)
+        first = {
+            row["technology"]: row
+            for row in _rows(
+                conn,
+                "SELECT d.technology, MIN(d.tick) AS tick FROM discoveries d "
+                "WHERE d.world_id = ? AND d.how = 'invented' GROUP BY d.technology",
+                (world_id,),
+            )
+        }
+        knowing = {
+            row["technology"]: row["n"]
+            for row in _rows(
+                conn,
+                "SELECT d.technology, COUNT(*) AS n FROM discoveries d "
+                "JOIN groups g ON g.world_id = d.world_id AND g.id = d.group_id "
+                "WHERE d.world_id = ? AND g.dissolved IS NULL GROUP BY d.technology",
+                (world_id,),
+            )
+        }
+        out = []
+        for tech_id in sorted(packs.technologies):
+            tech = packs.technologies[tech_id]
+            found = first.get(tech_id)
+            out.append(
+                {
+                    "id": tech_id,
+                    "name": getattr(tech.name, lang),
+                    "requires": [
+                        getattr(packs.technologies[required].name, lang)
+                        for required in tech.requires
+                    ],
+                    "known": found is not None,
+                    "first_year": None if found is None else found["tick"] // 360,
+                    "clans_knowing": knowing.get(tech_id, 0),
+                }
+            )
+        out.sort(key=lambda item: (item["first_year"] is None, item["first_year"] or 0, item["id"]))
+        return out
+
     @api.get("/worlds/{world_id}/events")
     def events(
         world_id: int,

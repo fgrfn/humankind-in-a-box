@@ -41,7 +41,7 @@ export interface Technology {
   id: string;
   name: string;
   year: number;
-  how: "invented" | "learned";
+  how: "invented" | "learned" | "inherited";
 }
 
 export interface Group {
@@ -82,6 +82,15 @@ export interface Why {
   expired: boolean;
 }
 
+export interface Discovery {
+  id: string;
+  name: string;
+  requires: string[];
+  known: boolean;
+  first_year: number | null;
+  clans_knowing: number;
+}
+
 export type Series = Record<string, { year: number; value: number }[]>;
 
 async function get<T>(path: string): Promise<T> {
@@ -102,5 +111,8 @@ export const api = {
   events: (world: number, lang: Lang, minImportance: number, limit = 80) =>
     get<WorldEvent[]>(`/worlds/${world}/events?lang=${lang}&min_importance=${minImportance}&limit=${limit}`),
   why: (world: number, seq: number, lang: Lang) => get<Why>(`/worlds/${world}/events/${seq}/why?lang=${lang}`),
+  technologies: (world: number, lang: Lang) => get<Discovery[]>(`/worlds/${world}/technologies?lang=${lang}`),
+  discoveries: (world: number, lang: Lang) =>
+    get<WorldEvent[]>(`/worlds/${world}/events?lang=${lang}&type=discovery&limit=500`),
   metrics: (world: number, keys: string[]) => get<Series>(`/worlds/${world}/metrics?keys=${keys.join(",")}`),
 };

@@ -74,13 +74,13 @@ def test_groups_and_persons(client: TestClient) -> None:
 
 
 def test_events_in_both_languages_and_paging(client: TestClient) -> None:
-    german = client.get("/api/v1/worlds/1/events?limit=5&min_importance=4").json()
-    english = client.get("/api/v1/worlds/1/events?limit=5&min_importance=4&lang=en").json()
+    german = client.get("/api/v1/worlds/1/events?limit=5&min_importance=3").json()
+    english = client.get("/api/v1/worlds/1/events?limit=5&min_importance=3&lang=en").json()
     assert [e["seq"] for e in german] == [e["seq"] for e in english]
     assert german[0]["text"] != english[0]["text"]
     assert "{" not in german[0]["text"] and "{" not in english[0]["text"]
     older = client.get(
-        f"/api/v1/worlds/1/events?limit=5&min_importance=4&before_seq={german[-1]['seq']}"
+        f"/api/v1/worlds/1/events?limit=5&min_importance=3&before_seq={german[-1]['seq']}"
     ).json()
     assert all(e["seq"] < german[-1]["seq"] for e in older)
     assert client.get("/api/v1/worlds/1/events?limit=5000").status_code == 422
@@ -98,6 +98,16 @@ def test_why_explains_a_discovery(client: TestClient) -> None:
     first = client.get("/api/v1/worlds/1/events?type=discovery&limit=500").json()[-1]
     old = client.get(f"/api/v1/worlds/1/events/{first['seq']}/why").json()
     assert old["decisions"] == [] and old["expired"] is True
+
+
+def test_technologies_list_everything_discoverable(client: TestClient) -> None:
+    techs = client.get("/api/v1/worlds/1/technologies").json()
+    assert len(techs) == 10
+    fire = next(tech for tech in techs if tech["id"] == "fire")
+    assert fire["known"] and fire["first_year"] is not None and fire["clans_knowing"] >= 1
+    assert techs[0]["known"], "known discoveries come first"
+    groups = client.get("/api/v1/worlds/1/groups").json()
+    assert fire["clans_knowing"] <= len(groups)
 
 
 def test_metrics_series(client: TestClient) -> None:

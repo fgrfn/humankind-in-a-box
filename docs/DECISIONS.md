@@ -19,3 +19,15 @@ Planned for stage 1 and 2, not part of stage 0:
 - Regions are fixed 16 x 16 tile blocks for now. They are the scope of natural events until cultures and settlements exist.
 - Biomes are part of the core for now, because world generation needs them. Resources, events and rules are pack data.
 - The built-in packs live inside the Python package (`src/hiab/data/packs/`) so a `pipx` install has them.
+
+## 2026-11-11: interface design
+
+The owner left the design open. Direction chosen for the web view:
+
+- **The page is the inside of the box.** The background is the sea the map floats in, so the map has no frame.
+- **Signature element: the history band** under the top strip. It shows the population over the whole history of the world with a notch for every discovery. Everything else stays quiet.
+- **Type:** Vollkorn for anything that is told (chronicle, names, headings), Barlow Semi Condensed for anything that is counted (numbers, labels, controls). Both are bundled, nothing is loaded from the internet.
+- **Colour** comes from the map's own pigments: sea, chalk, ochre, clay. Ochre marks what matters, clay is reserved for the gravest events.
+- **Structure:** three views (map, numbers, clans). On wide screens the chronicle is a ledger docked over the map, on phones a sheet that slides up from the bottom, with a tab bar in thumb reach.
+- **Charts** are hand-drawn SVG with a crosshair readout, a legend for two series and a table view. The two series colours are checked as a pair for colour-vision separation and contrast against the panel; do not change one alone.
+- Not done on purpose: card grids with shadows, uppercase labels, monospace data labels, decorative motion.

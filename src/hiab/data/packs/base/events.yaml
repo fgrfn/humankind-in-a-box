@@ -1,10 +1,10 @@
 drought:
-  importance: 3
+  importance: 2
   text:
     de: "Dürre in {region}: Das Land trocknet aus, Wild und Boden leiden."
     en: "Drought in {region}: the land dries out, game and soil suffer."
 harsh_winter:
-  importance: 3
+  importance: 2
   text:
     de: "Ein harter Winter trifft {region}. Viel Wild überlebt ihn nicht."
     en: "A harsh winter hits {region}. Much of the game does not survive."
@@ -29,12 +29,12 @@ mild_year:
     de: "Ein mildes, reiches Jahr in {region}."
     en: "A mild and plentiful year in {region}."
 warm_phase_begins:
-  importance: 4
+  importance: 3
   text:
     de: "Eine Warmzeit beginnt. Die Sommer werden länger."
     en: "A warm period begins. Summers grow longer."
 cold_phase_begins:
-  importance: 4
+  importance: 3
   text:
     de: "Eine Kaltzeit beginnt. Die Winter werden strenger."
     en: "A cold period begins. Winters grow harsher."
@@ -74,7 +74,7 @@ migration:
     de: "Die {clan} ziehen weiter."
     en: "The {clan} move on."
 famine:
-  importance: 3
+  importance: 2
   text:
     de: "Die {clan} hungern."
     en: "The {clan} are starving."
@@ -84,32 +84,32 @@ discovery:
     de: "{name} von den {clan} entdeckt: {tech}."
     en: "{name} of the {clan} discovers: {tech}."
 knowledge_shared:
-  importance: 3
+  importance: 2
   text:
     de: "Die {clan} lernen von den {teacher}: {tech}."
     en: "The {clan} learn from the {teacher}: {tech}."
 clan_split:
-  importance: 4
+  importance: 3
   text:
     de: "Die {clan} sind zu viele geworden. Ein Teil zieht fort und nennt sich {new_clan}."
     en: "The {clan} have grown too many. Some leave and call themselves {new_clan}."
 clan_merged:
-  importance: 3
+  importance: 2
   text:
     de: "Die letzten der {clan} schließen sich den {host} an."
     en: "The last of the {clan} join the {host}."
 clan_died_out:
-  importance: 4
+  importance: 3
   text:
     de: "Die {clan} sind ausgestorben."
     en: "The {clan} have died out."
 settlement_founded:
-  importance: 5
+  importance: 4
   text:
     de: "Die {clan} bleiben. Sie gründen die Siedlung {place}."
     en: "The {clan} stay. They found the settlement {place}."
 settlement_abandoned:
-  importance: 4
+  importance: 3
   text:
     de: "Der Hunger vertreibt die {clan} aus {place}."
     en: "Hunger drives the {clan} out of {place}."
