@@ -54,12 +54,12 @@ const DEPOSIT_SPRITES: Record<string, string> = {
   iron_ore: "boulder",
 };
 const DEPOSIT_COLOURS = [0xd9d2c0, 0xc97b4a, 0x8a8f98, 0xb7c4cc, 0xe9e4d8, 0xb04a3a];
-const BUILDING_COLOURS: Record<string, [number, number]> = {
-  fire_place: [0xe0b45c, 0xd0714a],
-  hut: [0xc9895a, 0x8a4f38],
-  drying_rack: [0xb89a6a, 0x7a6244],
-  storage_pit: [0x8d7a5c, 0x5a4a34],
-  kiln: [0xb5654a, 0x6e3b2c],
+const BUILDING_SPRITES: Record<string, string> = {
+  fire_place: "campfire",
+  hut: "hut",
+  drying_rack: "drying_rack",
+  storage_pit: "storage_pit",
+  kiln: "kiln",
 };
 
 // A fixed number per tile, so the same world always looks the same.
@@ -91,7 +91,7 @@ function diamond(g: Graphics, x: number, y: number, inset = 0): void {
 // map is too small to carry them.
 function fitLabels(camps: Container, scale: number): void {
   for (const marker of camps.children) {
-    const label = (marker as Container).children[1];
+    const label = (marker as Container).children.find((child) => child instanceof Text);
     if (!label) continue;
     label.visible = scale >= 0.8;
     label.scale.set(1.05 / scale);
@@ -340,35 +340,22 @@ export function MapView({ map, steps, groups, places, selected, focus, onSelect 
       if (!current) return;
       for (const child of current.buildings.removeChildren()) child.destroy();
       const all: Building[] = places.flatMap((place) => place.buildings);
+      const textures = current.sheet?.textures ?? {};
       const g = new Graphics();
       for (const building of all.sort((a, b) => a.y + a.x - (b.y + b.x))) {
         const [cx, top] = project(building.x, building.y);
-        const cy = top + TILE_H / 2;
-        const [wall, roof] = BUILDING_COLOURS[building.type] ?? [0xc9895a, 0x8a4f38];
-        if (building.state === "ruin") {
-          g.rect(cx - 4, cy - 2, 3, 2).fill(0x6f6a60);
-          g.rect(cx + 1, cy - 3, 3, 3).fill(0x857f73);
-          g.rect(cx - 1, cy, 2, 1.5).fill(0x5d5850);
-        } else if (building.state === "site") {
-          g.rect(cx - 4, cy - 5, 8, 5).stroke({ color: 0xe0b45c, width: 0.8 });
-          g.moveTo(cx - 4, cy).lineTo(cx + 4, cy - 5).stroke({ color: 0xe0b45c, width: 0.8 });
-        } else if (building.type === "fire_place") {
-          g.ellipse(cx, cy, 4, 2).fill(0x5a4a34);
-          g.poly([cx - 2, cy, cx, cy - 6, cx + 2, cy]).fill(roof);
-          g.poly([cx - 1, cy, cx, cy - 3.5, cx + 1, cy]).fill(wall);
-        } else if (building.type === "storage_pit") {
-          g.ellipse(cx, cy, 5, 2.5).fill(roof);
-          g.ellipse(cx, cy - 0.5, 3.4, 1.6).fill(0x2b2118);
-        } else if (building.type === "drying_rack") {
-          g.rect(cx - 5, cy - 6, 1, 6).fill(roof);
-          g.rect(cx + 4, cy - 6, 1, 6).fill(roof);
-          g.rect(cx - 5, cy - 6, 10, 1).fill(wall);
-          g.rect(cx - 3, cy - 5, 1.5, 3).fill(0xb5654a);
-          g.rect(cx + 0.5, cy - 5, 1.5, 3).fill(0xb5654a);
+        const name = building.state === "standing" ? (BUILDING_SPRITES[building.type] ?? "hut") : building.state;
+        const texture = textures[name];
+        if (texture) {
+          const sprite = new Sprite(texture);
+          sprite.anchor.set(0.5, 1);
+          sprite.position.set(cx, top + TILE_H);
+          const size = SPRITE_SCALE * 0.85;
+          sprite.scale.set(tileNoise(building.x, building.y, 7) < 50 ? size : -size, size);
+          current.buildings.addChild(sprite);
         } else {
-          g.rect(cx - 4, cy - 5, 8, 5).fill(wall);
-          g.poly([cx - 5.5, cy - 5, cx, cy - 10, cx + 5.5, cy - 5]).fill(roof);
-          g.rect(cx - 1, cy - 3, 2, 3).fill(0x2b2118);
+          // No picture for it yet: a plain mark, so nothing built goes unseen.
+          g.rect(cx - 3, top + TILE_H / 2 - 4, 6, 4).fill(building.state === "ruin" ? 0x6f6a60 : 0xc9895a);
         }
       }
       current.buildings.addChild(g);
@@ -389,7 +376,14 @@ export function MapView({ map, steps, groups, places, selected, focus, onSelect 
         const g = new Graphics();
         const chosen = group.id === selected;
         if (chosen) g.ellipse(0, 0, 13, 6.5).stroke({ color: 0xffffff, width: 1.5 });
-        if (group.settled) {
+        const texture = current.sheet?.textures[group.settled ? "campfire" : "tent"];
+        if (texture) {
+          const camp = new Sprite(texture);
+          camp.anchor.set(0.5, 1);
+          camp.position.set(0, TILE_H / 2);
+          camp.scale.set(SPRITE_SCALE * 0.85);
+          marker.addChild(camp);
+        } else if (group.settled) {
           g.rect(-5, -7, 10, 7).fill(0xc9895a);
           g.poly([-7, -7, 0, -13, 7, -7]).fill(0x8a4f38);
         } else {
@@ -402,7 +396,7 @@ export function MapView({ map, steps, groups, places, selected, focus, onSelect 
           style: { fontFamily: "'Barlow Semi Condensed', system-ui, sans-serif", fontSize: 11, fontWeight: "500", fill: 0xf2efe6, stroke: { color: 0x10242d, width: 3 } },
         });
         label.anchor.set(0.5, 1);
-        label.position.set(0, -13);
+        label.position.set(0, -16);
         label.resolution = 3;
         marker.addChild(label);
         marker.eventMode = "static";

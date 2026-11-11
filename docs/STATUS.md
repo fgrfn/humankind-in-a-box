@@ -6,9 +6,9 @@
 - Stufe 1a (Menschen) ist umgesetzt: Personen, Familien, Clans, Nahrungssuche, Hunger, Wanderung, Entdeckungen, Wissensweitergabe, Clan-Spaltung und -Verschmelzung, erste Siedlungen.
 - Stufe 1b (API, Kartenansicht, erste Statistik, Docker-Image) ist umgesetzt. Damit ist Stufe 1 bis auf die Feinabstimmung abgeschlossen.
 - Stufe 2a (Wege und Gebäude) ist umgesetzt: Trittzähler verblassen, aus viel begangenen Kacheln werden Pfade und Wege. Sesshafte Clans bauen nach und nach (Baustelle, fertiges Gebäude, Ruine), Gebäude wirken auf Sterblichkeit und Vorrat. Alte Alltagsereignisse werden ausgedünnt (`HIAB_EVENT_DETAIL_YEARS`, Vorgabe 100).
-- Die Karte zeigt echte Grafik: 16 Geländekacheln und 8 Naturobjekte aus drei erzeugten Bögen, zugeschnitten mit `tools/build_atlas.py`. Gebäude, Lager und Menschen sind noch gezeichnete Platzhalter, bis ihre Bögen da sind.
+- Die Karte zeigt echte Grafik: 16 Geländekacheln, 8 Naturobjekte und 8 Gebäudebilder (Feuer, Zelt, Hütte, Trockengestell, Vorratsgrube, Töpferofen, Baustelle, Ruine) aus vier erzeugten Bögen, zugeschnitten mit `tools/build_atlas.py`. Wandernde Clans erscheinen als Zelt. Einzelne Menschen sind noch nicht zu sehen.
 - Als Nächstes der Rest von Stufe 2: Völker, voller Entdeckungsgraph, Wissensverlust, Handel, Kulturen mit Sprache.
-- Noch offen: Lizenz-Entscheidung, Prüfung von PyPI-Name und Domain, Bögen für Gebäude und Menschen.
+- Noch offen: Lizenz-Entscheidung, Prüfung von PyPI-Name und Domain, Bögen für Menschen und Tiere.
 
 ## Was es gibt
 

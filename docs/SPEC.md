@@ -327,7 +327,7 @@ Alle Sprites einschließlich Gelände werden per Bildgenerator entworfen (so mac
 
 `uv run python tools/build_atlas.py`, danach das Frontend neu bauen.
 
-**Erprobt (drei Bögen, November 2026):** Acht Bilder je Bogen in zwei Reihen zu vier funktionieren zuverlässig, sechzehn nicht. Transparenter Hintergrund funktioniert und ist besser als Magenta. Der Generator hält kein exaktes Pixelraster ein, deshalb misst das Skript und verlässt sich auf keine festen Zellgrößen. Objekte kommen immer auf einem Bodenstück, das ist in Ordnung, das Skript entfernt es.
+**Erprobt (vier Bögen, November 2026):** Acht Bilder je Bogen in zwei Reihen zu vier funktionieren zuverlässig, sechzehn nicht. Transparenter Hintergrund funktioniert und ist besser als Magenta. Der Generator hält kein exaktes Pixelraster ein, deshalb misst das Skript und verlässt sich auf keine festen Zellgrößen. Objekte kommen immer auf einem Bodenstück, das ist in Ordnung, das Skript entfernt es.
 
 **Stil-Prompt (immer voranstellen, einen freigegebenen Bogen als Referenzbild anhängen):**
 

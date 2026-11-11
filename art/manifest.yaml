@@ -11,3 +11,6 @@ sheets:
   - file: sheets/nature-1.png
     kind: object
     cells: [oak, pine, birch, dead_tree, berry_bush, reeds, boulder, copper_rock]
+  - file: sheets/buildings-1.png
+    kind: object
+    cells: [campfire, tent, hut, drying_rack, storage_pit, kiln, site, ruin]
