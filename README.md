@@ -57,4 +57,4 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy
 ```
 
-The specification is in `docs/`. Rules for contributors, human or AI, are in `CLAUDE.md`.
+The specification is `docs/SPEC.md` (German), the current state `docs/STATUS.md`. Rules for contributors, human or AI, are in `CLAUDE.md`.

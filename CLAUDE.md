@@ -2,7 +2,7 @@
 
 Self-hosted idle civilization simulation. The server simulates, the browser shows. The owner speaks German; talk to him in German. Code, identifiers, pack keys, comments and commits are English. UI texts and templates exist in German and English.
 
-The full specification lives in the claude.ai project "Humankind-in-a-Box" as `claude/SPEC.md` (to be copied to `docs/SPEC.md`). Follow-up decisions are in `docs/DECISIONS.md`.
+The full specification is `docs/SPEC.md` (German). Follow-up decisions are in `docs/DECISIONS.md`, the current state in `docs/STATUS.md`. Where they contradict the specification, the newer documents win.
 
 ## Rules that must not be broken
 
