@@ -105,7 +105,8 @@ def test_why_explains_a_discovery(client: TestClient) -> None:
 
 def test_technologies_list_everything_discoverable(client: TestClient) -> None:
     techs = client.get("/api/v1/worlds/1/technologies").json()
-    assert len(techs) == 10
+    assert len(techs) >= 35
+    assert all(tech["times_lost"] >= 0 for tech in techs)
     fire = next(tech for tech in techs if tech["id"] == "fire")
     assert fire["known"] and fire["first_year"] is not None and fire["clans_knowing"] >= 1
     assert techs[0]["known"], "known discoveries come first"

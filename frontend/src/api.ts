@@ -148,6 +148,7 @@ export interface Discovery {
   known: boolean;
   first_year: number | null;
   clans_knowing: number;
+  times_lost: number;
 }
 
 export type Series = Record<string, { year: number; value: number }[]>;

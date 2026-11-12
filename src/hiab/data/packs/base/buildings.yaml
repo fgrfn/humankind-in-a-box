@@ -36,3 +36,17 @@ kiln:
   work: 20
   per_people: 40
   storage_months: 1
+granary:
+  name: {de: Kornspeicher, en: Granary}
+  requires: [granary]
+  materials: {wood: 80}
+  work: 12
+  per_people: 40
+  storage_months: 3
+well:
+  name: {de: Brunnen, en: Well}
+  requires: [wells]
+  materials: {wood: 20}
+  work: 8
+  per_people: 80
+  mortality_percent: 96

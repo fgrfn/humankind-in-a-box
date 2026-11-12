@@ -108,9 +108,10 @@ class Society:
         self.dirty_clans: set[int] = set()
         self.dirty_places: set[int] = set()
         self.new_discoveries: list[tuple[int, str, int, int, str]] = []
+        self.forgotten: list[tuple[int, str, int]] = []  # clan, technology, tick
         self.food_ids = world.packs.foods()
         self.campable = ~world.map.water & ~world.map.river
-        self._effects: dict[int, tuple[dict[str, int], float, int]] = {}
+        self._effects: dict[int, tuple[dict[str, int], float, int, int]] = {}
         self.retired: dict[int, Clan] = {}  # clans dissolved since the last save
         self.dead: dict[int, Person] = {}  # people who died since the last save
         self.vanished: set[int] = set()  # ruins that disappeared since the last save
@@ -139,8 +140,9 @@ class Society:
         """How far around its camp a clan gathers. Settled people range a little further."""
         return self.p.forage_radius + (self.p.settled_forage_bonus if clan.settled else 0)
 
-    def effects(self, clan: Clan) -> tuple[dict[str, int], float, int]:
-        """Harvest percent per food, mortality factor and storage months of a clan."""
+    def effects(self, clan: Clan) -> tuple[dict[str, int], float, int, int]:
+        """Harvest percent per food, mortality factor, storage months and how many
+        adults the clan can hold together before it splits."""
         cached = self._effects.get(clan.id)
         if cached is not None:
             return cached
@@ -148,6 +150,7 @@ class Society:
         harvest = {rid: packs.resources[rid].harvest_base_percent for rid in self.food_ids}
         mortality = 1.0
         storage = self.p.storage_months
+        together = self.p.clan_split_adults
         for tech_id in sorted(clan.techs):
             tech = packs.technologies.get(tech_id)
             if tech is None:
@@ -157,6 +160,7 @@ class Society:
                     harvest[rid] += tech.effects.harvest_percent[rid]
             mortality = mortality * tech.effects.mortality_percent / 100
             storage += tech.effects.storage_months
+            together += tech.effects.group_adults
         if clan.settled:
             seen: set[str] = set()
             for building in self.places[clan.place]["buildings"]:
@@ -167,7 +171,7 @@ class Society:
                 if building["type"] not in seen:
                     seen.add(building["type"])
                     mortality = mortality * definition.mortality_percent / 100
-        result = (harvest, mortality, storage)
+        result = (harvest, mortality, storage, together)
         self._effects[clan.id] = result
         return result
 
@@ -362,7 +366,7 @@ class Society:
         )
         if need <= 0:
             return
-        harvest_percent, _mortality, storage_months = self.effects(clan)
+        harvest_percent, _mortality, storage_months, _together = self.effects(clan)
         capacity = need * storage_months
         _builders, foragers = self.crews(clan)
         # A strong forager brings home more than a weak one.
@@ -490,7 +494,7 @@ class Society:
         clan = self.clans[person.clan]
         age = self.age(person)
         unmet = self.unmet_average(clan)
-        _harvest, mortality, _storage = self.effects(clan)
+        _harvest, mortality, _storage, _together = self.effects(clan)
 
         if age < 1:
             band, base = "infant", p.death_chance_infant
@@ -680,6 +684,49 @@ class Society:
         self.dirty_clans.add(clan.id)
         self.new_discoveries.append((clan.id, tech_id, self.world.tick, discoverer, how))
 
+    def forget(self, clan: Clan, adults: list[Person]) -> None:
+        """Knowledge nobody can keep up is lost.
+
+        At risk is only what nothing else the clan knows builds on, and only when
+        too few adults are left to pass it on or when what the craft needs is no
+        longer to be found near the camp.
+        """
+        world, p = self.world, self.p
+        packs = world.packs
+        if p.knowledge_loss_chance_per_year <= 0:
+            return
+        needed = {
+            required
+            for tech_id in clan.techs
+            if tech_id in packs.technologies
+            for required in packs.technologies[tech_id].requires
+        }
+        few = len(adults) < p.knowledge_keepers
+        for tech_id in sorted(clan.techs):
+            tech = packs.technologies.get(tech_id)
+            if tech is None or tech_id in needed:
+                continue
+            unused = any(not self.nearby(clan, resource) for resource in tech.needs_nearby)
+            if not few and not unused:
+                continue
+            factors = [("few_keepers", 1.0)] if few else []
+            if unused:
+                factors.append(("out_of_use", 2.0 if few else 1.0))
+            if not world.roll(
+                f"forget.{tech_id}", "group", clan.id, p.knowledge_loss_chance_per_year, factors
+            ):
+                continue
+            del clan.techs[tech_id]
+            self._effects.pop(clan.id, None)
+            self.dirty_clans.add(clan.id)
+            self.forgotten.append((clan.id, tech_id, world.tick))
+            world.count(f"tech.{tech_id}.lost")
+            world.count("knowledge.lost")
+            world.emit(
+                "knowledge_lost",
+                data={"tech": tech_id, "clan": clan.name, "clan_id": clan.id},
+            )
+
     def clan_year(self, clan: Clan) -> None:
         world, p = self.world, self.p
         packs = world.packs
@@ -747,6 +794,8 @@ class Society:
                         },
                     )
 
+        self.forget(clan, adults)
+
         hungry = self.unmet_average(clan) >= 15
         if clan.settled:
             starving = self.unmet_average(clan) >= p.abandon_hunger_percent
@@ -766,7 +815,7 @@ class Society:
         ):
             self.settle(clan)
 
-        if len(adults) >= p.clan_split_adults:
+        if len(adults) >= self.effects(clan)[3]:
             factors = [("hungry", 2.0)] if hungry else []
             if world.roll("clan_split", "group", clan.id, p.clan_split_chance_per_year, factors):
                 self.split(clan)
@@ -1048,7 +1097,7 @@ class Society:
         world, p = self.world, self.p
         reach = p.move_radius
         outer = self.window(clan.y, clan.x, reach + p.forage_radius)  # judged as a wanderer
-        harvest_percent, _m, _s = self.effects(clan)
+        harvest_percent, _m, _s, _t = self.effects(clan)
         value = np.zeros(world.stocks[self.food_ids[0]][outer].shape, dtype=np.int64)
         for rid in self.food_ids:
             if harvest_percent[rid] > 0:
@@ -1088,7 +1137,7 @@ class Society:
     def site_score(self, clan: Clan) -> int:
         world, p = self.world, self.p
         area = self.window(clan.y, clan.x, p.forage_radius)
-        harvest_percent, _m, _s = self.effects(clan)
+        harvest_percent, _m, _s, _t = self.effects(clan)
         return sum(
             int(world.stocks[rid][area].astype(np.int64).sum())
             * harvest_percent[rid]
@@ -1202,6 +1251,7 @@ class Society:
         self.dirty_clans.clear()
         self.dirty_places.clear()
         self.new_discoveries.clear()
+        self.forgotten.clear()
         self.retired = {}
         self.dead = {}
         self.vanished = set()

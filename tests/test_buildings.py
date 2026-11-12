@@ -106,10 +106,10 @@ def test_building_with_unknown_technology_is_rejected(tmp_path: Path) -> None:
     shutil.copytree(find_pack("base", None), target)
     with (target / "buildings.yaml").open("a", encoding="utf-8") as handle:
         handle.write(
-            "tower:\n  name: {de: Turm, en: Tower}\n  requires: [masonry]\n"
+            "tower:\n  name: {de: Turm, en: Tower}\n  requires: [alchemy]\n"
             "  materials: {wood: 10}\n  work: 5\n"
         )
-    with pytest.raises(PackError, match="masonry"):
+    with pytest.raises(PackError, match="alchemy"):
         load_packs(["base"], tmp_path)
 
 

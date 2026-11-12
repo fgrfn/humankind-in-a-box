@@ -8,7 +8,8 @@
 - Stufe 2a (Wege und Gebäude) ist umgesetzt: Trittzähler verblassen, aus viel begangenen Kacheln werden Pfade und Wege. Sesshafte Clans bauen nach und nach (Baustelle, fertiges Gebäude, Ruine), Gebäude wirken auf Sterblichkeit und Vorrat. Alte Alltagsereignisse werden ausgedünnt (`HIAB_EVENT_DETAIL_YEARS`, Vorgabe 100).
 - Die Karte zeigt echte Grafik aus fünf erzeugten Bögen, zugeschnitten mit `tools/build_atlas.py`: 16 Geländekacheln, 8 Naturobjekte, 8 Gebäudebilder (Feuer, Zelt, Hütte, Trockengestell, Vorratsgrube, Töpferofen, Baustelle, Ruine) und 8 Figuren. Wandernde Clans erscheinen als Zelt. Jede Figur auf der Karte ist ein lebender Mensch: Sie läuft vom Lager dorthin, wo sie laut Simulation diesen Monat arbeitet, und zurück. Antippen zeigt, wer das ist, was er tut und womit sein Leben verging. Der einzelne Schritt ist Anzeige, Tätigkeit und Ziel kommen aus der Simulation.
 - Tätigkeiten pro Person: Jeder Erwachsene hat jeden Monat eine Arbeit (ein Nahrungsmittel beschaffen, bauen, Nahrung suchen) und ein Ziel. Bei offener Baustelle baut etwa ein Viertel der Erwachsenen, die Geschicktesten zuerst; die anderen teilen sich nach Ertrag auf die Nahrungsquellen auf. Kraft bestimmt, wie viel ein Sammler heimbringt, Geschick den Baufortschritt. Jede Gruppe läuft zu ihrem eigenen Ziel, daraus entstehen die Pfade. Gezählt wird je Person (Lebensmonate je Tätigkeit) und je Welt (`work.*`).
-- Als Nächstes der Rest von Stufe 2: Völker, voller Entdeckungsgraph, Wissensverlust, Handel, Kulturen mit Sprache.
+- Stufe 2, Teil Wissen: 35 Entdeckungen von der Steinzeit bis zum Eisen (Ackerbau, Viehhaltung, Pflug, Bewässerung, Speicher, Kupfer, Bronze, Eisen, Mauerwerk, Segeln und mehr). Ackerbau macht den Boden zur Nahrungsquelle, der bei Übernutzung nachlässt. Entdeckungen können Gruppen größer zusammenhalten (`group_adults`), so entstehen Dörfer statt immer neuer Kleinclans. Wissen geht verloren, wenn zu wenige Erwachsene übrig sind oder das Nötige (Lehm, Erz, Fisch) nicht mehr in der Nähe ist; verloren geht nur, worauf nichts anderes aufbaut. Verlorenes bleibt in der Datenbank verzeichnet.
+- Als Nächstes der Rest von Stufe 2: Völker, Handel, Kulturen mit Sprache und Ortsnamen, „Während du weg warst“. Der Entdeckungsgraph endet vorerst beim Eisen; spätere Zeitalter kommen mit Stufe 2b, weil sie Staaten und Handel brauchen.
 - Noch offen: Lizenz-Entscheidung, Prüfung von PyPI-Name und Domain, Bogen für Tiere.
 
 ## Was es gibt
@@ -19,7 +20,7 @@
 - `hiab run` startet Simulation und Webserver als zwei Prozesse. Dockerfile vorhanden.
 - Konfiguration in vier Ebenen, Programm-Log als JSON-Zeilen.
 - Zufallsströme je Teilsystem, Weltgenerator rein mit Ganzzahlen.
-- Datenpakete mit Schema-Prüfung und `packs/local/overrides.yaml`. Das Basispaket enthält fünf Bestände (Wildpflanzen, Wild, Fisch, Holz, Boden), sechs Vorkommen, sechs Naturereignis-Regeln, zehn Entdeckungen und die Lebensparameter in `life.yaml`.
+- Datenpakete mit Schema-Prüfung und `packs/local/overrides.yaml`. Das Basispaket enthält fünf Bestände (Wildpflanzen, Wild, Fisch, Holz, Boden), sechs Vorkommen, sechs Naturereignis-Regeln, 35 Entdeckungen, sieben Gebäude und die Lebensparameter in `life.yaml`.
 - Tick-Schleife: Klimadrift, saisonale Regeln je Region, Nachwachsen der Bestände, monatlicher Schritt der Gesellschaft.
 - Jeder Wurf läuft über `World.roll` oder `World.draw_int`, wird in `world_log` protokolliert und in `metrics` gezählt.
 - SQLite mit Migrationen, Speichern und Laden, inklusive Personen, Gruppen, Entdeckungen, Orten, Gebäuden und Trittzählern je Kachel.
