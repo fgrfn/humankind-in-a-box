@@ -280,3 +280,24 @@ button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 
 /* The map stays laid out while another view covers it (see MapView). */
 .stage.away { visibility: hidden; pointer-events: none; }
+
+/* Family tree: drawn as a tree, scrollable in every direction. */
+.dialog.wide { width: min(1100px, 100%); }
+.dialog-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.tree-scroll { overflow: auto; max-height: 64dvh; margin: 8px -6px 0; padding: 26px 6px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--deep); overscroll-behavior: contain; }
+.tree-svg { display: block; overflow: visible; }
+.tree-line { fill: none; stroke: #6d8a94; stroke-width: 1.5; }
+.tree-couple { fill: none; stroke: var(--ochre); stroke-width: 2; stroke-dasharray: 4 3; }
+.tree-gen { font: 500 12px/1 'Barlow Semi Condensed', sans-serif; fill: var(--muted); }
+.tree-node { cursor: pointer; }
+.tree-node rect { fill: var(--panel); stroke: var(--line); }
+.tree-node .sex { fill: #2b93b3; stroke: none; }
+.tree-node.f .sex { fill: #b98a2e; }
+.tree-node .name { font: 600 15px/1 Vollkorn, Georgia, serif; fill: var(--chalk); }
+.tree-node .years { font: 400 12px/1 'Barlow Semi Condensed', sans-serif; fill: var(--muted); }
+.tree-node.dead { opacity: 0.7; }
+.tree-node.centre rect:first-child { stroke: var(--ochre); stroke-width: 2; }
+.tree-node:hover rect:first-child { stroke: var(--chalk); }
+.tree-node:focus-visible { outline: none; }
+.tree-node:focus-visible rect:first-child { stroke: var(--ochre); stroke-width: 3; }
+.plain.link { display: inline-block; margin: 6px 14px 0 0; padding: 0; color: var(--ochre); text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; cursor: pointer; font: inherit; }

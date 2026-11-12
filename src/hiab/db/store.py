@@ -230,6 +230,10 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE groups ADD COLUMN stores TEXT NOT NULL DEFAULT '{}';
     """,
+    """
+    CREATE INDEX persons_by_mother ON persons (world_id, mother);
+    CREATE INDEX persons_by_father ON persons (world_id, father);
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.

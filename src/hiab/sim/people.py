@@ -355,7 +355,7 @@ class Society:
         return clan
 
     def found(self) -> None:
-        """Place the first families on a good spot."""
+        """Place the first peoples, each on a good spot far from the others."""
         world = self.world
         potential = np.zeros((world.map.height, world.map.width), dtype=np.int64)
         for rid in self.food_ids:
@@ -369,12 +369,44 @@ class Society:
         mild = (world.map.temperature >= 80) & (world.map.temperature <= 230)
         score = np.where(self.campable, score, -1)
         score = np.where(mild, score, score // 3)
-        order = np.argsort(-score, axis=None, kind="stable")[:20]
-        pick = int(order[world.draw_int("start_site", 0, len(order) - 1)])
-        y, x = divmod(pick, world.map.width)
+        order = np.argsort(-score, axis=None, kind="stable")
+        positive = int((score > 0).sum())
+        # The best quarter of the habitable land: room enough to spread out.
+        good = order[: max(20, positive // 4)]
+        good = good[score.ravel()[good] > 0]
+        # Each people begins on one of the best spots that lies far from the
+        # others. Where there is not enough room, they may begin closer.
+        sites: list[tuple[int, int]] = []
+        apart = max(world.map.width, world.map.height) // 3
+        for number in range(self.p.start_peoples):
+            while True:
+                free = [
+                    int(index)
+                    for index in good
+                    if all(
+                        max(
+                            abs(int(index) // world.map.width - y),
+                            abs(int(index) % world.map.width - x),
+                        )
+                        >= apart
+                        for y, x in sites
+                    )
+                ][:20]
+                if free or apart <= 2:
+                    break
+                apart = apart * 2 // 3
+            if not free:
+                break
+            pick = free[world.draw_int(f"start_site.{number}", 0, len(free) - 1)]
+            sites.append(divmod(pick, world.map.width))
+        for y, x in sites:
+            self.found_people(y, x)
 
+    def found_people(self, y: int, x: int) -> None:
+        """One starting people: a few families with a speech of their own."""
+        world = self.world
         clan = self.add_clan(y, x, 0, self.new_language())
-        self.add_culture(clan, 0)
+        culture = self.add_culture(clan, 0)
         for _ in range(self.p.start_families):
             family = self.next_family
             self.next_family += 1
@@ -388,7 +420,17 @@ class Society:
                 self.birth(
                     couple[0], couple[1], clan, -self.quiet(0, 8 * DAYS_PER_YEAR), quiet=True
                 )
-        world.emit("humankind_begins", data={"clan": clan.name, "clan_id": clan.id, "y": y, "x": x})
+        world.emit(
+            "humankind_begins",
+            data={
+                "clan": clan.name,
+                "clan_id": clan.id,
+                "people": culture.name,
+                "people_id": culture.id,
+                "y": y,
+                "x": x,
+            },
+        )
 
     def birth(
         self, mother: Person, father: Person, clan: Clan, born: int, quiet: bool = False
@@ -638,11 +680,20 @@ class Society:
                 y, x = int(ys[nearest]) + wide[0].start, int(xs[nearest]) + wide[1].start
             else:
                 stock = world.stocks[rid][area].astype(np.int64)
-                total = int(stock.sum())
-                amount = min(amount, total // 4)  # never strip the land bare
-                taken = stock * amount // max(1, total)
-                world.stocks[rid][area] = (stock - taken).astype(np.int32)
-                amount = int(taken.sum())
+                amount = min(amount, int(stock.sum()) // 4)  # never strip the land bare
+                # Taken where there is most, tile by tile. Spread over all tiles in
+                # proportion, a small crew's share rounds down to nothing.
+                flat = stock.ravel()
+                taken = np.zeros_like(flat)
+                left = amount
+                for index in np.argsort(-flat, kind="stable").tolist():
+                    if left <= 0:
+                        break
+                    part = min(left, int(flat[index]) // 2)
+                    taken[index] = part
+                    left -= part
+                world.stocks[rid][area] = (stock - taken.reshape(stock.shape)).astype(np.int32)
+                amount -= left
                 ty, tx = divmod(int(np.argmax(stock)), stock.shape[1])
                 y, x = area[0].start + ty, area[1].start + tx
             clan.stores[rid] = clan.stores.get(rid, 0) + amount
@@ -808,6 +859,8 @@ class Society:
         target.members.append(person.id)
         target.members.sort()
         person.clan = target.id
+        # A new clan gives new work, from next month on.
+        person.activity, person.target_y, person.target_x = "", -1, -1
         self.dirty_persons.add(person.id)
         if not source.members:
             self.dissolve(source, "clan_died_out", {})
@@ -1005,11 +1058,29 @@ class Society:
             and max(abs(other.y - clan.y), abs(other.x - clan.x)) <= p.contact_radius
         ]
         kin = [other for other in near if other.culture == clan.culture]
-        if (
-            clan.id != culture.origin
-            and sound_distance(clan.language, culture.language) >= p.people_sound_distance
-        ):
+        drifted = sound_distance(clan.language, culture.language) >= p.people_sound_distance
+        # Too many clans for one people: those far from its middle break away.
+        members = [other for other in self.clans.values() if other.culture == clan.culture]
+        outlying = False
+        far_side: set[int] = set()
+        if len(members) > p.people_max_clans:
+            middle_y = sum(other.y for other in members) // len(members)
+            middle_x = sum(other.x for other in members) // len(members)
+            distances = sorted(
+                max(abs(other.y - middle_y), abs(other.x - middle_x)) for other in members
+            )
+            mine = max(abs(clan.y - middle_y), abs(clan.x - middle_x))
+            edge = distances[len(distances) * 3 // 4]
+            outlying = mine >= edge
+            far_side = {
+                other.id
+                for other in members
+                if max(abs(other.y - middle_y), abs(other.x - middle_x)) >= edge
+            }
+        if clan.id != culture.origin and (drifted or outlying):
             factors = [("no_kin_near", 3.0)] if not kin else []
+            if outlying:
+                factors.append(("people_too_large", 1.0 + 4.0 * len(members) / p.people_max_clans))
             if clan.settled:
                 factors.append(("settled", 1.5))
             if world.roll(
@@ -1019,9 +1090,11 @@ class Society:
                 # Neighbours who by now speak more like the founders go with them.
                 followers = 0
                 for other in kin:
-                    if sound_distance(other.language, new.language) < sound_distance(
+                    # Neighbours on the same far side go too when a people falls apart.
+                    closer = sound_distance(other.language, new.language) < sound_distance(
                         other.language, culture.language
-                    ):
+                    )
+                    if closer or other.id in far_side:
                         other.culture = new.id
                         self.dirty_clans.add(other.id)
                         followers += 1
@@ -1049,7 +1122,14 @@ class Society:
         host_id = min(counts, key=lambda cid: (-counts[cid], cid))
         if counts[host_id] < 3:
             return
-        if not world.roll("people_joined", "group", clan.id, p.people_join_chance_per_year, []):
+        alone = sum(1 for other in self.clans.values() if other.culture == clan.culture) == 1
+        if not world.roll(
+            "people_joined",
+            "group",
+            clan.id,
+            p.people_join_chance_per_year,
+            [("people_of_one_clan", 3.0)] if alone else [],
+        ):
             return
         host = self.cultures[host_id]
         clan.culture = host_id
@@ -1739,6 +1819,12 @@ class Society:
             },
         )
         clan.y, clan.x, clan.arrived = y, x, world.tick
+        # Work was given out for the old camp; at the new one it is given out next month.
+        for person_id in clan.members:
+            person = self.persons[person_id]
+            if person.activity:
+                person.activity, person.target_y, person.target_x = "", -1, -1
+                self.dirty_persons.add(person_id)
         self.dirty_clans.add(clan.id)
 
     # ---- statistics and state ---------------------------------------------

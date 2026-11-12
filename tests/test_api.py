@@ -334,3 +334,26 @@ def test_worker_follows_the_speed_file(tmp_path: Path, settings: Settings) -> No
         thread.join(timeout=30)
     # It stops speeding in the year asked for, not some years later.
     assert 2 * 360 <= stored_tick() < 3 * 360
+
+
+def test_family_tree_goes_up_and_down(client: TestClient) -> None:
+    people = client.get("/api/v1/worlds/1/people").json()
+    # Somebody born in the world, so there are parents to find.
+    for candidate in people:
+        detail = client.get(f"/api/v1/worlds/1/persons/{candidate['id']}").json()
+        if detail["mother"] and detail["mother"]["id"]:
+            break
+    tree = client.get(f"/api/v1/worlds/1/persons/{candidate['id']}/tree").json()
+    assert tree["person"]["id"] == candidate["id"]
+    assert {person["id"] for person in tree["ancestors"][0]} >= {detail["mother"]["id"]}
+    for older, younger in zip(tree["ancestors"][1:], tree["ancestors"], strict=False):
+        ids = {person["id"] for person in older}
+        assert {p for person in younger for p in (person["mother"], person["father"]) if p} <= ids
+    founder = client.get(f"/api/v1/worlds/1/persons/{tree['ancestors'][0][0]['id']}/tree").json()
+    assert candidate["id"] in {person["id"] for person in founder["descendants"][0]}
+    for parents, children in zip(
+        [[founder["person"]], *founder["descendants"]], founder["descendants"], strict=False
+    ):
+        ids = {person["id"] for person in parents}
+        assert all(child["mother"] in ids or child["father"] in ids for child in children)
+    assert client.get("/api/v1/worlds/1/persons/999999/tree").status_code == 404
