@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -8,8 +11,10 @@ from fastapi.testclient import TestClient
 
 from hiab.api.app import create_app
 from hiab.config import Settings
+from hiab.control import Control, read_control, read_pace, write_control
+from hiab.db.store import table_digests
 from hiab.packs import load_packs
-from hiab.worker import simulate
+from hiab.worker import Worker, simulate
 
 
 @pytest.fixture(scope="module")
@@ -263,3 +268,67 @@ def test_stores_are_shown_per_clan_people_and_world(client: TestClient) -> None:
         assert sum(item["stores"].get(good, 0) for item in peoples) == amount
     keys = client.get("/api/v1/worlds/1/metric-keys").json()
     assert "stores.food" in keys and "stores.wood" in keys
+
+
+def test_speed_can_be_changed_through_a_file_only(tmp_path: Path, settings: Settings) -> None:
+    db = tmp_path / "w.sqlite"
+    simulate(db, settings, 3, 1)
+    packs = load_packs(settings.packs, settings.data_dir)
+    before = table_digests(db)
+    with TestClient(create_app(db, packs, "de", data_dir=settings.data_dir)) as open_client:
+        state = open_client.get("/api/v1/control").json()
+        assert state["speed"] == 1 and state["paused"] is False and state["changeable"] is True
+        assert state["speeds"] == [1, 5, 25, 0] and state["year"] == 3
+
+        fast = open_client.put("/api/v1/control", json={"speed": 25, "for_years": 10}).json()
+        assert fast["speed"] == 25 and fast["until_year"] == 13
+        assert read_control(settings.data_dir).speed == 25
+
+        paused = open_client.put("/api/v1/control", json={"paused": True}).json()
+        assert paused["paused"] is True and paused["speed"] == 25 and paused["until_year"] == 13
+
+        normal = open_client.put("/api/v1/control", json={"speed": 1, "paused": False}).json()
+        assert normal == {**normal, "speed": 1, "paused": False, "until_year": None}
+        assert open_client.put("/api/v1/control", json={"speed": 7}).status_code == 422
+    assert table_digests(db) == before, "changing the speed must not touch the database"
+
+    with TestClient(
+        create_app(db, packs, "de", data_dir=settings.data_dir, api_token="s3cret")
+    ) as locked:
+        assert locked.get("/api/v1/control").json()["token_required"] is True
+        assert locked.put("/api/v1/control", json={"speed": 5}).status_code == 401
+        wrong = {"Authorization": "Bearer nope"}
+        assert locked.put("/api/v1/control", json={"speed": 5}, headers=wrong).status_code == 401
+        right = {"Authorization": "Bearer s3cret"}
+        assert locked.put("/api/v1/control", json={"speed": 5}, headers=right).json()["speed"] == 5
+
+    with TestClient(create_app(db, packs, "de")) as fixed:
+        assert fixed.get("/api/v1/control").json()["changeable"] is False
+        assert fixed.put("/api/v1/control", json={"speed": 5}).status_code == 409
+
+
+def test_worker_follows_the_speed_file(tmp_path: Path, settings: Settings) -> None:
+    def stored_tick() -> int:
+        found = sqlite3.connect(quick.db_path).execute("SELECT tick FROM worlds").fetchone()
+        return int(found[0])
+
+    quick = settings.model_copy(update={"pace": 30.0, "autosave_seconds": 1.0, "api": False})
+    write_control(quick.data_dir, Control(paused=True))
+    worker = Worker(quick)
+    thread = threading.Thread(target=lambda: worker.run(seed=4, handle_signals=False))
+    thread.start()
+    try:
+        time.sleep(2.0)
+        assert stored_tick() == 0, "a paused world stands still"
+        write_control(quick.data_dir, Control(speed=0, until_year=2))
+        deadline = time.monotonic() + 60
+        while read_control(quick.data_dir).speed != 1 and time.monotonic() < deadline:
+            time.sleep(0.2)
+        assert read_control(quick.data_dir) == Control(), "back to normal once the year is reached"
+        time.sleep(2.5)
+        assert read_pace(quick.data_dir)["running"] is True
+    finally:
+        worker.request_stop()
+        thread.join(timeout=30)
+    # It stops speeding in the year asked for, not some years later.
+    assert 2 * 360 <= stored_tick() < 3 * 360
