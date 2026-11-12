@@ -19,6 +19,8 @@
 - Karte: Ein Tipp auf ein Lager oder einen Menschen öffnet ein Feld neben der Karte (Handy: unten), die Karte bleibt sichtbar. Während eine andere Ansicht offen ist, hält die Karte an und behält ihre Größe; vorher konnte der Wechsel zurück zur Karte die Seite einfrieren lassen.
 - Startvölker: Eine Welt beginnt mit mehreren Völkern (`start_peoples`, Vorgabe 4) an weit auseinanderliegenden guten Orten, jedes mit eigener Sprache und `start_families` Familien.
 - Stammbaum: Vorfahren bis drei Generationen hinauf, Nachkommen bis drei hinunter (`/persons/{id}/tree`), aus der Personenkarte erreichbar; jede Person darin ist antippbar.
+- Volksgröße: Hat ein Volk mehr als `people_max_clans` (Vorgabe 10) Clans, lösen sich die Clans am Rand leichter und gründen eigene Völker; Nachbarn auf derselben Seite gehen mit. Ein Volk aus nur einem Clan schließt sich leichter Nachbarn an. Große Völker sollen später nur durch Bindendes (Herrschaft, Glaube) entstehen, das kommt mit Stufe 2b. Seed 7 nach 400 Jahren: 92 Völker, die meisten mit ein bis drei Clans, das größte mit 30.
+- Zeitregler: Beim Ändern der Geschwindigkeit speichert der Worker sofort, und die Seite fragt beim Vorspulen jede Sekunde nach, damit Jahr und Karte gleich nachziehen.
 - Volksfarben: Die ersten zwölf Völker haben feste, gut unterscheidbare Farben, weitere werden über den goldenen Schnitt verteilt.
 - Offen aus den Wünschen des Besitzers: später eine größere Karte.
 - Früher geplant: Handel und „Während du weg warst“. Bräuche und Glaube eines Volkes folgen mit Stufe 2b. Der Entdeckungsgraph endet vorerst beim Eisen; spätere Zeitalter kommen mit Stufe 2b, weil sie Staaten und Handel brauchen.

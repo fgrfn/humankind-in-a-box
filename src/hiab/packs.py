@@ -186,9 +186,14 @@ class LifeParams(_Model):
     # Peoples. A clan whose speech has moved this many sounds away from that of
     # its people may found a people of its own; a clan alone among strangers may
     # join them.
-    people_sound_distance: int = Field(3, ge=1, le=20)
+    people_sound_distance: int = Field(4, ge=1, le=20)
     people_emerge_chance_per_year: float = Field(0.002, ge=0.0, le=1.0)
     people_join_chance_per_year: float = Field(0.01, ge=0.0, le=1.0)
+    # A people that has spread over more clans than this does not hold together:
+    # its outlying clans break away and form peoples of their own, even before
+    # their speech has drifted far. Large peoples need something to bind them
+    # (a ruler, a faith), which comes with later stages.
+    people_max_clans: int = Field(10, ge=1, le=10000)
     # Land. Every clan holds the tiles around its camp on which nobody presses
     # harder. How hard it presses follows from its adults, what it has built and
     # whether it is settled; hunger weakens it. Strangers gather less on held land.

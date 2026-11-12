@@ -133,6 +133,7 @@ class Worker:
                         log.info("speed changed", extra={"world_id": world.id, **wanted.as_dict()})
                         control = wanted
                         next_tick = now
+                        next_save = now  # show where the world stands right away
                     seconds_per_tick = (
                         0.0 if control.speed == 0 else 60.0 / (settings.pace * control.speed)
                     )

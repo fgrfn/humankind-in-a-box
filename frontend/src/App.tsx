@@ -244,13 +244,20 @@ function Numbers({ stats, series, discoveries, peoples, worldStores, lang, t }: 
 }
 
 // The one control over the world: how fast it runs. Nothing else can be changed from here.
-function TimeControl({ lang, t }: { lang: Lang; t: Translate }) {
+function TimeControl({ lang, t, onFast }: { lang: Lang; t: Translate; onFast: (fast: boolean) => void }) {
   const [speed, setSpeed] = useState<Speed | null>(null);
   const [asking, setAsking] = useState(false);
   const [draft, setDraft] = useState("");
   const pending = useRef<{ paused?: boolean; speed?: number; for_years?: number } | null>(null);
 
-  usePolling(async () => setSpeed(await api.speed()), 4, []);
+  const [busy, setBusy] = useState(false);
+  usePolling(async () => setSpeed(await api.speed()), busy ? 1 : 4, [busy]);
+  // While the world runs faster than normal, everything else is asked for more often.
+  const sped = speed !== null && !speed.paused && speed.speed !== 1;
+  useEffect(() => {
+    onFast(sped);
+    setBusy(sped);
+  }, [sped, onFast]);
 
   const token = () => {
     try {
@@ -653,6 +660,7 @@ export function App() {
   const [lang, setLang] = useState<Lang>(initialLang);
   const t = useMemo(() => translator(lang), [lang]);
   const [worldId, setWorldId] = useState<number | null>(null);
+  const [fast, setFast] = useState(false); // the world runs faster than normal
   const [stats, setStats] = useState<Stats | null>(null);
   const [map, setMap] = useState<WorldMap | null>(null);
   const [steps, setSteps] = useState<number[]>([]);
@@ -734,8 +742,8 @@ export function App() {
       setGroups(nextGroups);
       setPlaces(nextPlaces);
     },
-    5,
-    [worldId, lang],
+    fast ? 1 : 5,
+    [worldId, lang, fast],
   );
 
   usePolling(
@@ -876,7 +884,7 @@ export function App() {
             t("waiting")
           )}
         </p>
-        <TimeControl lang={lang} t={t} />
+        <TimeControl lang={lang} t={t} onFast={setFast} />
         <nav className="views" aria-label="Views">
           {views.map((name) => (
             <button key={name} className={view === name ? "on" : ""} aria-current={view === name ? "page" : undefined} onClick={() => setView(name)}>

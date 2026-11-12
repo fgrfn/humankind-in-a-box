@@ -680,11 +680,20 @@ class Society:
                 y, x = int(ys[nearest]) + wide[0].start, int(xs[nearest]) + wide[1].start
             else:
                 stock = world.stocks[rid][area].astype(np.int64)
-                total = int(stock.sum())
-                amount = min(amount, total // 4)  # never strip the land bare
-                taken = stock * amount // max(1, total)
-                world.stocks[rid][area] = (stock - taken).astype(np.int32)
-                amount = int(taken.sum())
+                amount = min(amount, int(stock.sum()) // 4)  # never strip the land bare
+                # Taken where there is most, tile by tile. Spread over all tiles in
+                # proportion, a small crew's share rounds down to nothing.
+                flat = stock.ravel()
+                taken = np.zeros_like(flat)
+                left = amount
+                for index in np.argsort(-flat, kind="stable").tolist():
+                    if left <= 0:
+                        break
+                    part = min(left, int(flat[index]) // 2)
+                    taken[index] = part
+                    left -= part
+                world.stocks[rid][area] = (stock - taken.reshape(stock.shape)).astype(np.int32)
+                amount -= left
                 ty, tx = divmod(int(np.argmax(stock)), stock.shape[1])
                 y, x = area[0].start + ty, area[1].start + tx
             clan.stores[rid] = clan.stores.get(rid, 0) + amount
@@ -1049,11 +1058,29 @@ class Society:
             and max(abs(other.y - clan.y), abs(other.x - clan.x)) <= p.contact_radius
         ]
         kin = [other for other in near if other.culture == clan.culture]
-        if (
-            clan.id != culture.origin
-            and sound_distance(clan.language, culture.language) >= p.people_sound_distance
-        ):
+        drifted = sound_distance(clan.language, culture.language) >= p.people_sound_distance
+        # Too many clans for one people: those far from its middle break away.
+        members = [other for other in self.clans.values() if other.culture == clan.culture]
+        outlying = False
+        far_side: set[int] = set()
+        if len(members) > p.people_max_clans:
+            middle_y = sum(other.y for other in members) // len(members)
+            middle_x = sum(other.x for other in members) // len(members)
+            distances = sorted(
+                max(abs(other.y - middle_y), abs(other.x - middle_x)) for other in members
+            )
+            mine = max(abs(clan.y - middle_y), abs(clan.x - middle_x))
+            edge = distances[len(distances) * 3 // 4]
+            outlying = mine >= edge
+            far_side = {
+                other.id
+                for other in members
+                if max(abs(other.y - middle_y), abs(other.x - middle_x)) >= edge
+            }
+        if clan.id != culture.origin and (drifted or outlying):
             factors = [("no_kin_near", 3.0)] if not kin else []
+            if outlying:
+                factors.append(("people_too_large", 1.0 + 4.0 * len(members) / p.people_max_clans))
             if clan.settled:
                 factors.append(("settled", 1.5))
             if world.roll(
@@ -1063,9 +1090,11 @@ class Society:
                 # Neighbours who by now speak more like the founders go with them.
                 followers = 0
                 for other in kin:
-                    if sound_distance(other.language, new.language) < sound_distance(
+                    # Neighbours on the same far side go too when a people falls apart.
+                    closer = sound_distance(other.language, new.language) < sound_distance(
                         other.language, culture.language
-                    ):
+                    )
+                    if closer or other.id in far_side:
                         other.culture = new.id
                         self.dirty_clans.add(other.id)
                         followers += 1
@@ -1093,7 +1122,14 @@ class Society:
         host_id = min(counts, key=lambda cid: (-counts[cid], cid))
         if counts[host_id] < 3:
             return
-        if not world.roll("people_joined", "group", clan.id, p.people_join_chance_per_year, []):
+        alone = sum(1 for other in self.clans.values() if other.culture == clan.culture) == 1
+        if not world.roll(
+            "people_joined",
+            "group",
+            clan.id,
+            p.people_join_chance_per_year,
+            [("people_of_one_clan", 3.0)] if alone else [],
+        ):
             return
         host = self.cultures[host_id]
         clan.culture = host_id
