@@ -175,7 +175,7 @@ class Worker:
                 if now >= next_save:
                     store.save(world, settings.world_log_years, settings.event_detail_years)
                     # Sped up, the interface should not lag years behind.
-                    wait = settings.autosave_seconds if control.speed == 1 else 5.0
+                    wait = settings.autosave_seconds if control.speed == 1 else 3.0
                     next_save = time.monotonic() + min(settings.autosave_seconds, wait)
         finally:
             store.save(world, settings.world_log_years, settings.event_detail_years)

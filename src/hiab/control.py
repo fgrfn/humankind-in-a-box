@@ -18,7 +18,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-SPEEDS = (1, 5, 25, 0)  # times the configured pace; 0 means as fast as the machine allows
+# Times the configured pace; 0 means as fast as the machine allows. At the default
+# pace of 120 days a minute, 10x is about 3 years a minute and 100x about 33.
+SPEEDS = (1, 10, 100, 0)
 
 
 @dataclass(frozen=True, slots=True)

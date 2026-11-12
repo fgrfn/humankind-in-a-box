@@ -278,14 +278,14 @@ def test_speed_can_be_changed_through_a_file_only(tmp_path: Path, settings: Sett
     with TestClient(create_app(db, packs, "de", data_dir=settings.data_dir)) as open_client:
         state = open_client.get("/api/v1/control").json()
         assert state["speed"] == 1 and state["paused"] is False and state["changeable"] is True
-        assert state["speeds"] == [1, 5, 25, 0] and state["year"] == 3
+        assert state["speeds"] == [1, 10, 100, 0] and state["year"] == 3
 
-        fast = open_client.put("/api/v1/control", json={"speed": 25, "for_years": 10}).json()
-        assert fast["speed"] == 25 and fast["until_year"] == 13
-        assert read_control(settings.data_dir).speed == 25
+        fast = open_client.put("/api/v1/control", json={"speed": 100, "for_years": 10}).json()
+        assert fast["speed"] == 100 and fast["until_year"] == 13
+        assert read_control(settings.data_dir).speed == 100
 
         paused = open_client.put("/api/v1/control", json={"paused": True}).json()
-        assert paused["paused"] is True and paused["speed"] == 25 and paused["until_year"] == 13
+        assert paused["paused"] is True and paused["speed"] == 100 and paused["until_year"] == 13
 
         normal = open_client.put("/api/v1/control", json={"speed": 1, "paused": False}).json()
         assert normal == {**normal, "speed": 1, "paused": False, "until_year": None}
@@ -296,15 +296,17 @@ def test_speed_can_be_changed_through_a_file_only(tmp_path: Path, settings: Sett
         create_app(db, packs, "de", data_dir=settings.data_dir, api_token="s3cret")
     ) as locked:
         assert locked.get("/api/v1/control").json()["token_required"] is True
-        assert locked.put("/api/v1/control", json={"speed": 5}).status_code == 401
+        assert locked.put("/api/v1/control", json={"speed": 10}).status_code == 401
         wrong = {"Authorization": "Bearer nope"}
-        assert locked.put("/api/v1/control", json={"speed": 5}, headers=wrong).status_code == 401
+        assert locked.put("/api/v1/control", json={"speed": 10}, headers=wrong).status_code == 401
         right = {"Authorization": "Bearer s3cret"}
-        assert locked.put("/api/v1/control", json={"speed": 5}, headers=right).json()["speed"] == 5
+        assert (
+            locked.put("/api/v1/control", json={"speed": 10}, headers=right).json()["speed"] == 10
+        )
 
     with TestClient(create_app(db, packs, "de")) as fixed:
         assert fixed.get("/api/v1/control").json()["changeable"] is False
-        assert fixed.put("/api/v1/control", json={"speed": 5}).status_code == 409
+        assert fixed.put("/api/v1/control", json={"speed": 10}).status_code == 409
 
 
 def test_worker_follows_the_speed_file(tmp_path: Path, settings: Settings) -> None:
