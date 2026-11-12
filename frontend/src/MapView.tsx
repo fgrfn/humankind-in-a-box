@@ -279,7 +279,9 @@ class Crowd {
     return [a[0] + (b[0] - a[0]) * walker.along, a[1] + (b[1] - a[1]) * walker.along];
   }
 
-  step(seconds: number): void {
+  // `view` is the part of the map on screen, in map units: figures outside it are
+  // not drawn, so a big world costs no more than what you are looking at.
+  step(seconds: number, view: { left: number; top: number; right: number; bottom: number }): void {
     const map = this.map;
     if (!map) return;
     for (const walker of this.walkers.values()) {
@@ -331,6 +333,9 @@ class Crowd {
       }
       const [fx, fy] = this.where(walker);
       const [sx, sy] = project(fx, fy);
+      const seen = sx >= view.left && sx <= view.right && sy >= view.top && sy <= view.bottom;
+      walker.sprite.visible = seen;
+      if (!seen) continue;
       const spread = walker.task === "rest" ? 1 : 0.5;
       walker.sprite.position.set(sx + walker.dx * spread, sy + TILE_H / 2 + 2 + walker.dy * spread - lift);
       walker.sprite.zIndex = sy + walker.dy;
@@ -363,13 +368,14 @@ interface Props {
   people: Human[];
   land: { clans: number[]; peoples: number[] } | null;
   links: TradeLink[];
+  active: boolean;
   selected: number | null;
   focus: { id: number; nonce: number } | null;
   onSelect: (id: number) => void;
   onPerson: (id: number) => void;
 }
 
-export function MapView({ map, steps, groups, places, people, land, links, selected, focus, onSelect, onPerson }: Props) {
+export function MapView({ active, map, steps, groups, places, people, land, links, selected, focus, onSelect, onPerson }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<Scene | null>(null);
   const ready = useRef<Promise<void> | null>(null);
@@ -417,7 +423,15 @@ export function MapView({ map, steps, groups, places, people, land, links, selec
         scene.current = { app, world, terrain, paths, borders, names, routes, fields, nature, buildings, people, camps, sheet, natureAt: new Map() };
         app.ticker.add((ticker) => {
           people.visible = world.scale.x >= 0.9; // too small to read from far away
-          if (people.visible) crowd.current.step(Math.min(0.1, ticker.deltaMS / 1000));
+          if (!people.visible) return;
+          const scale = world.scale.x;
+          const edge = 24;
+          crowd.current.step(Math.min(0.1, ticker.deltaMS / 1000), {
+            left: -world.position.x / scale - edge,
+            top: -world.position.y / scale - edge,
+            right: (app.screen.width - world.position.x) / scale + edge,
+            bottom: (app.screen.height - world.position.y) / scale + edge,
+          });
         });
 
         const canvas = app.canvas;
@@ -474,6 +488,18 @@ export function MapView({ map, steps, groups, places, people, land, links, selec
       if (current) current.app.destroy(true, { children: true });
     };
   }, []);
+
+  // While another view is open the map keeps its size but stops drawing:
+  // a canvas shrunk to nothing and grown again is slow to recover, and drawing
+  // what nobody sees wastes the battery.
+  useEffect(() => {
+    void ready.current?.then(() => {
+      const current = scene.current;
+      if (!current) return;
+      if (active) current.app.ticker.start();
+      else current.app.ticker.stop();
+    });
+  }, [active]);
 
   // Ground and everything that grows on it: built once per map.
   useEffect(() => {

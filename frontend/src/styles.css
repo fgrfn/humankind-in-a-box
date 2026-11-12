@@ -252,3 +252,31 @@ button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 .stores .bar span { display: block; height: 100%; background: #b98a2e; }
 .stores .count { text-align: right; font-variant-numeric: tabular-nums; color: var(--chalk); }
 .stores small { grid-column: 1 / -1; color: var(--muted); font-size: 14px; line-height: 1.35; }
+
+/* Time: pause, speed, and what the worker really manages. */
+.time { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: auto; }
+.time button { min-height: 36px; padding: 0 11px; font: 500 14px/1 inherit; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.time button.on { color: var(--deep); background: var(--ochre); border-color: var(--ochre); }
+.time button:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
+.time .rate { margin-left: 8px; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.time .token { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: end; padding-top: 6px; font-size: 14px; color: var(--chalk); }
+.time .token input { display: block; margin-top: 4px; min-height: 36px; padding: 0 8px; color: var(--chalk); background: var(--deep); border: 1px solid var(--line); border-radius: 6px; }
+@media (max-width: 900px) {
+  .time { order: 5; flex-basis: 100%; margin: 6px 0 0; }
+  .time button { min-height: 40px; }
+}
+
+/* Beside the map: who or what was tapped. The map stays visible and usable. */
+.inspector { position: absolute; left: 14px; top: 116px; width: 360px; max-height: calc(100% - 130px); overflow-y: auto; overscroll-behavior: contain; z-index: 3; padding: 16px 18px 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.inspector h2 { font: 600 20px/1.2 var(--prose); margin: 0 34px 6px 0; color: var(--ochre); }
+.inspector dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 12px 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.inspector dt { color: var(--muted); }
+.inspector dd { margin: 0; overflow-wrap: anywhere; }
+.inspector-close { position: sticky; top: 0; float: right; width: 40px; height: 40px; margin: -8px -10px 0 0; font: 400 26px/1 inherit; color: var(--chalk); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; z-index: 1; }
+.inspector-close:focus-visible { outline: 2px solid var(--ochre); outline-offset: 2px; }
+@media (max-width: 820px) {
+  .inspector { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 46%; border-radius: 10px 10px 0 0; border-width: 1px 0 0; z-index: 6; }
+}
+
+/* The map stays laid out while another view covers it (see MapView). */
+.stage.away { visibility: hidden; pointer-events: none; }

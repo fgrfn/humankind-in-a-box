@@ -216,6 +216,30 @@ export interface Discovery {
 
 export type Series = Record<string, { year: number; value: number }[]>;
 
+export interface Speed {
+  paused: boolean;
+  speed: number;
+  until_year: number | null;
+  speeds: number[];
+  days_per_minute: number;
+  measured_days_per_minute: number | null;
+  running: boolean;
+  year: number;
+  changeable: boolean;
+  token_required: boolean;
+}
+
+export class NeedsToken extends Error {}
+
+async function put<T>(path: string, body: unknown, token: string | null): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`/api/v1${path}`, { method: "PUT", headers, body: JSON.stringify(body) });
+  if (response.status === 401) throw new NeedsToken();
+  if (!response.ok) throw new Error(`${response.status} ${path}`);
+  return (await response.json()) as T;
+}
+
 async function get<T>(path: string): Promise<T> {
   const response = await fetch(`/api/v1${path}`);
   if (!response.ok) {
@@ -225,6 +249,8 @@ async function get<T>(path: string): Promise<T> {
 }
 
 export const api = {
+  speed: () => get<Speed>("/control"),
+  setSpeed: (wish: { paused?: boolean; speed?: number; for_years?: number }, token: string | null) => put<Speed>("/control", wish, token),
   health: () => get<{ status: string; version: string; world: (Calendar & { id: number }) | null }>("/health"),
   stats: (world: number, lang: Lang) => get<Stats>(`/worlds/${world}/stats?lang=${lang}`),
   map: (world: number) => get<WorldMap>(`/worlds/${world}/map`),

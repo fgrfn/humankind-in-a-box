@@ -9,6 +9,7 @@ from pathlib import Path
 from types import FrameType
 
 from hiab.config import Settings
+from hiab.control import Control, read_control, write_control, write_pace
 from hiab.db.store import Store
 from hiab.logging_setup import get_logger
 from hiab.packs import PackSet, load_packs
@@ -97,17 +98,22 @@ class Worker:
     def request_stop(self, _signum: int = 0, _frame: FrameType | None = None) -> None:
         self._stop = True
 
-    def run(self, seed: int | None = None) -> None:
+    def run(self, seed: int | None = None, handle_signals: bool = True) -> None:
         settings = self.settings
         packs = load_packs(settings.packs, settings.data_dir)
         store = Store(settings.db_path)
         world = open_world(store, settings, packs, seed)
-        signal.signal(signal.SIGINT, self.request_stop)
-        signal.signal(signal.SIGTERM, self.request_stop)
+        if handle_signals:  # only possible in the main thread
+            signal.signal(signal.SIGINT, self.request_stop)
+            signal.signal(signal.SIGTERM, self.request_stop)
 
-        seconds_per_tick = 60.0 / settings.pace
         next_tick = time.monotonic()
         next_save = next_tick + settings.autosave_seconds
+        next_look = 0.0
+        control = Control()
+        seconds_per_tick = 60.0 / settings.pace
+        measured_from, measured_tick = next_tick, world.tick
+        was_paused = False
         log.info(
             "worker started",
             extra={"world_id": world.id, "tick": world.tick, "pace": settings.pace},
@@ -115,13 +121,42 @@ class Worker:
         try:
             while not self._stop:
                 now = time.monotonic()
+                if now >= next_look:
+                    # Twice a second: what does the interface want, and how fast are we really?
+                    next_look = now + 0.5
+                    wanted = read_control(settings.data_dir)
+                    year = world.tick // DAYS_PER_YEAR
+                    if wanted.until_year is not None and year >= wanted.until_year:
+                        wanted = Control(paused=wanted.paused)
+                        write_control(settings.data_dir, wanted)
+                    if wanted != control:
+                        log.info("speed changed", extra={"world_id": world.id, **wanted.as_dict()})
+                        control = wanted
+                        next_tick = now
+                    seconds_per_tick = (
+                        0.0 if control.speed == 0 else 60.0 / (settings.pace * control.speed)
+                    )
+                    elapsed = now - measured_from
+                    if elapsed >= 2.0:
+                        rate = (world.tick - measured_tick) * 60.0 / elapsed
+                        write_pace(settings.data_dir, year, rate, not control.paused)
+                        measured_from, measured_tick = now, world.tick
+                if control.paused:
+                    if not was_paused:
+                        # Everything up to here is on disk before the world stands still.
+                        store.save(world, settings.world_log_years, settings.event_detail_years)
+                        was_paused = True
+                    time.sleep(0.25)
+                    next_tick = time.monotonic()
+                    continue
+                was_paused = False
                 if now < next_tick:
                     time.sleep(min(0.25, next_tick - now))
                     continue
                 started = time.perf_counter()
                 world.step()
                 duration = time.perf_counter() - started
-                if duration > seconds_per_tick:
+                if control.speed == 1 and duration > seconds_per_tick:
                     log.warning(
                         "tick slower than pace",
                         extra={
@@ -130,12 +165,20 @@ class Worker:
                             "ms": round(duration * 1000, 1),
                         },
                     )
+                if (
+                    control.until_year is not None
+                    and world.tick >= control.until_year * DAYS_PER_YEAR
+                ):
+                    next_look = 0.0  # the year asked for is reached: back to normal at once
                 # No catching up after a pause: the world continues where it stood.
                 next_tick = max(next_tick + seconds_per_tick, now)
                 if now >= next_save:
                     store.save(world, settings.world_log_years, settings.event_detail_years)
-                    next_save = now + settings.autosave_seconds
+                    # Sped up, the interface should not lag years behind.
+                    wait = settings.autosave_seconds if control.speed == 1 else 5.0
+                    next_save = time.monotonic() + min(settings.autosave_seconds, wait)
         finally:
             store.save(world, settings.world_log_years, settings.event_detail_years)
             store.close()
+            write_pace(settings.data_dir, world.tick // DAYS_PER_YEAR, 0.0, False)
             log.info("worker stopped", extra={"world_id": world.id, "tick": world.tick})

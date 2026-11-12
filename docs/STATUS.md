@@ -15,7 +15,9 @@
 - „Während du weg warst“: Der Browser merkt sich je Welt das zuletzt gesehene Jahr und zeigt beim Wiederkommen nach mindestens fünf Weltjahren eine Zusammenfassung (`/since`).
 - Damit ist Stufe 2 inhaltlich fertig.
 - Lager: Jeder Clan hält neben Nahrung auch Güter (Holz, Feuerstein, Lehm, Salz, Erze; was lagerbar ist, steht im Datenpaket). Ist niemand hungrig, holt ein Teil der Erwachsenen, was am meisten fehlt, solange Platz ist. Platz richtet sich nach der Zahl der Erwachsenen und nach Lagergebäuden. Gebaut wird aus dem Lager, nicht mehr direkt aus dem Land. Handwerk verbraucht jährlich etwas, und Tauschpartner geben ab, wovon sie reichlich haben. Je Clan wird gebucht, was im Jahr dazukam, verbraucht, erhalten und abgegeben wurde; je Volk und Welt gibt es Summen und Verläufe (`stores.*`).
-- Offen aus den Wünschen des Besitzers: Zeitregler in der Oberfläche.
+- Zeitregler: Anhalten, 1×, 5×, 25×, so schnell wie möglich und „10 Jahre vor“ (danach zurück auf normal). Die API schreibt den Wunsch in `control.json` im Datenordner, der Worker liest ihn zweimal pro Sekunde und meldet in `pace.json`, wie schnell er wirklich ist. Die Datenbank bleibt dabei unberührt. Mit gesetztem API-Token wird er dafür verlangt.
+- Karte: Ein Tipp auf ein Lager oder einen Menschen öffnet ein Feld neben der Karte (Handy: unten), die Karte bleibt sichtbar. Während eine andere Ansicht offen ist, hält die Karte an und behält ihre Größe; vorher konnte der Wechsel zurück zur Karte die Seite einfrieren lassen.
+- Offen aus den Wünschen des Besitzers: mehrere Startvölker, Stammbaumansicht, später eine größere Karte.
 - Früher geplant: Handel und „Während du weg warst“. Bräuche und Glaube eines Volkes folgen mit Stufe 2b. Der Entdeckungsgraph endet vorerst beim Eisen; spätere Zeitalter kommen mit Stufe 2b, weil sie Staaten und Handel brauchen.
 - Noch offen: Lizenz-Entscheidung, Prüfung von PyPI-Name und Domain, Bogen für Tiere.
 

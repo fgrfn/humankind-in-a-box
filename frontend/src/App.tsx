@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Discovery, type Group, type Human, type Lang, type People, type Since, type TradeLink, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
+import { api, NeedsToken, type Speed, type Discovery, type Group, type Human, type Lang, type People, type Since, type TradeLink, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
 import { Chart, SERIES_COLOURS, type Point } from "./Chart";
 import { HistoryBand, type Mark } from "./HistoryBand";
 import { formatNumber, translator, type TextKey } from "./i18n";
@@ -243,7 +243,136 @@ function Numbers({ stats, series, discoveries, peoples, worldStores, lang, t }: 
   );
 }
 
-function ClanDetail({ detail, t, lang, onShow, onPerson, onClan }: { detail: Group; t: Translate; lang: Lang; onShow: () => void; onPerson: (id: number) => void; onClan: (id: number) => void }) {
+// The one control over the world: how fast it runs. Nothing else can be changed from here.
+function TimeControl({ lang, t }: { lang: Lang; t: Translate }) {
+  const [speed, setSpeed] = useState<Speed | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [draft, setDraft] = useState("");
+  const pending = useRef<{ paused?: boolean; speed?: number; for_years?: number } | null>(null);
+
+  usePolling(async () => setSpeed(await api.speed()), 4, []);
+
+  const token = () => {
+    try {
+      return window.localStorage.getItem("hiab.token");
+    } catch {
+      return null;
+    }
+  };
+  const ask = async (wish: { paused?: boolean; speed?: number; for_years?: number }) => {
+    try {
+      setSpeed(await api.setSpeed(wish, token()));
+      setAsking(false);
+    } catch (error) {
+      if (error instanceof NeedsToken) {
+        pending.current = wish;
+        setAsking(true);
+      }
+    }
+  };
+  if (!speed || !speed.changeable) return null;
+
+  const rate = speed.measured_days_per_minute ?? 0;
+  const shown = speed.paused
+    ? t("paused")
+    : !speed.running
+      ? t("notRunning")
+      : rate >= 720
+        ? `${formatNumber(Math.round((rate / 360) * 10) / 10, lang)} ${t("perMinuteYears")}`
+        : `${formatNumber(Math.round(rate), lang)} ${t("perMinuteDays")}`;
+  return (
+    <div className="time" role="group" aria-label={t("time")}>
+      <button className={speed.paused ? "on" : ""} aria-pressed={speed.paused} onClick={() => void ask({ paused: !speed.paused })}>
+        {speed.paused ? t("resume") : t("pause")}
+      </button>
+      {speed.speeds.map((factor) => (
+        <button key={factor} className={!speed.paused && speed.speed === factor ? "on" : ""} aria-pressed={speed.speed === factor} onClick={() => void ask({ speed: factor, paused: false })}>
+          {factor === 0 ? t("asFast") : `${factor}×`}
+        </button>
+      ))}
+      <button onClick={() => void ask({ speed: 0, for_years: 10, paused: false })}>{t("tenYears")}</button>
+      <span className="rate" aria-live="polite">
+        {shown}
+        {speed.until_year ? `, ${t("untilYear")} ${speed.until_year}` : ""}
+      </span>
+      {asking ? (
+        <form
+          className="token"
+          onSubmit={(event) => {
+            event.preventDefault();
+            try {
+              window.localStorage.setItem("hiab.token", draft);
+            } catch {
+              // Without storage the token is asked for again next time.
+            }
+            if (pending.current) void ask(pending.current);
+          }}
+        >
+          <label>
+            {t("tokenAsk")}
+            <input type="password" value={draft} onChange={(event) => setDraft(event.target.value)} autoComplete="off" />
+          </label>
+          <button type="submit">{t("tokenSave")}</button>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
+function PersonCard({ person, t, onPerson }: { person: PersonDetail; t: Translate; onPerson: (id: number) => void }) {
+  return (
+    <>
+      <h2>{person.name}</h2>
+      <p className="lede">
+        {person.clan_name ? `${person.clan_name}, ` : ""}
+        {person.died_year === null ? `${t("age")} ${person.age}` : `${t("died")} ${t("year")} ${person.died_year}, ${t("age")} ${person.age}`}
+      </p>
+      <dl>
+        {person.died_year === null ? (
+          <>
+            <dt>{t("doing")}</dt>
+            <dd>{person.activity_text || (person.age < 16 ? t("tooYoung") : t("nothingNow"))}</dd>
+          </>
+        ) : null}
+        {person.work_months.length > 0 ? (
+          <>
+            <dt>{t("lifeWork")}</dt>
+            <dd>{person.work_months.map((entry) => `${entry.text}: ${entry.months} ${t("months")}`).join(", ")}</dd>
+          </>
+        ) : null}
+        <dt>{t("family")}</dt>
+        <dd>
+          {[
+            person.mother ? [t("mother"), [person.mother]] : null,
+            person.father ? [t("father"), [person.father]] : null,
+            person.partner ? [t("partner"), [person.partner]] : null,
+            person.children.length ? [t("childrenOf"), person.children] : null,
+          ]
+            .filter((entry): entry is [string, { id: number; name: string }[]] => entry !== null)
+            .map(([label, relatives]) => (
+              <span key={label} className="kin">
+                {label}:{" "}
+                {relatives.map((relative) => (
+                  <button key={relative.id} className="plain name" onClick={() => onPerson(relative.id)}>
+                    {relative.name}
+                  </button>
+                ))}
+              </span>
+            ))}
+        </dd>
+        <dt>{t("nature")}</dt>
+        <dd>
+          {Object.entries(person.traits)
+            .map(([trait, value]) => `${t(trait as "vigor" | "curiosity" | "sociability" | "craft")} ${value}`)
+            .join(", ")}
+          , {person.tiles_moved} {t("walked")}
+        </dd>
+      </dl>
+    </>
+  );
+}
+
+function ClanDetail({ detail, t, lang, onShow, onPerson, onClan }: { detail: Group; t: Translate; lang: Lang; onShow?: () => void; onPerson: (id: number) => void; onClan: (id: number) => void }) {
   return (
     <article className="detail">
       <h2>{detail.name}</h2>
@@ -251,9 +380,11 @@ function ClanDetail({ detail, t, lang, onShow, onPerson, onClan }: { detail: Gro
         {detail.people ? `${t("ofThePeople")} ${detail.people}, ` : ""}
         {detail.population} {t("people")}, {detail.settled ? `${t("settled")}${detail.place ? ` (${detail.place})` : ""}` : t("wandering")}, {t("founded")} {detail.founded_year}
       </p>
-      <button className="plain" onClick={onShow}>
+      {onShow ? (
+        <button className="plain" onClick={onShow}>
         {t("showOnMap")}
       </button>
+      ) : null}
       <h3>{t("stores")}</h3>
       <ul className="stores">
         {detail.stores.map((item) => (
@@ -508,9 +639,12 @@ export function App() {
     };
   }, [worldId, selected, lang, stats?.year]);
 
+  // On the map a tap opens a panel beside it; the map stays in view and in use.
+  const [panelOpen, setPanelOpen] = useState(false);
   const selectFromMap = useCallback((id: number) => {
+    setPerson(null);
     setSelected(id);
-    setView("clans");
+    setPanelOpen(true);
   }, []);
 
   const explain = useCallback(
@@ -552,6 +686,7 @@ export function App() {
             t("waiting")
           )}
         </p>
+        <TimeControl lang={lang} t={t} />
         <nav className="views" aria-label="Views">
           {views.map((name) => (
             <button key={name} className={view === name ? "on" : ""} aria-current={view === name ? "page" : undefined} onClick={() => setView(name)}>
@@ -571,14 +706,47 @@ export function App() {
       <HistoryBand population={series["people.population"] ?? []} marks={marks} lang={lang} yearLabel={t("year")} peopleLabel={t("people")} emptyLabel={t("historyEmpty")} />
 
       <main>
-        <div className="stage" hidden={view !== "map"}>
-          <MapView map={map} steps={steps} groups={groups} places={places} people={people} land={showLand ? land : null} links={showTrade ? links : []} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
+        <div className={`stage ${view === "map" ? "" : "away"}`} aria-hidden={view !== "map"}>
+          <MapView active={view === "map"} map={map} steps={steps} groups={groups} places={places} people={people} land={showLand ? land : null} links={showTrade ? links : []} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
           <button className={`map-toggle ${showLand ? "on" : ""}`} aria-pressed={showLand} onClick={() => setShowLand((shown) => !shown)}>
             {t("land")}
           </button>
           <button className={`map-toggle second ${showTrade ? "on" : ""}`} aria-pressed={showTrade} onClick={() => setShowTrade((shown) => !shown)}>
             {t("trade")}
           </button>
+          {person || (panelOpen && detail) ? (
+            <aside className="inspector" aria-label={person ? person.name : detail?.name}>
+              <button
+                className="inspector-close"
+                aria-label={t("close")}
+                onClick={() => {
+                  if (person) setPerson(null);
+                  else setPanelOpen(false);
+                }}
+              >
+                ×
+              </button>
+              {person ? (
+                <>
+                  <PersonCard person={person} t={t} onPerson={showPerson} />
+                  <button
+                    className="plain link"
+                    onClick={() => {
+                      setSelected(person.clan);
+                      setPanelOpen(true);
+                      setPerson(null);
+                    }}
+                  >
+                    {person.clan_name}
+                  </button>
+                </>
+              ) : detail ? (
+                <>
+                  <ClanDetail detail={detail} t={t} lang={lang} onPerson={showPerson} onClan={setSelected} />
+                </>
+              ) : null}
+            </aside>
+          ) : null}
           <aside className={`ledger ${ledgerOpen ? "open" : ""}`} aria-label={t("chronicle")}>
             <button className="ledger-head" onClick={() => setLedgerOpen((open) => !open)} aria-expanded={ledgerOpen} title={ledgerOpen ? t("hideChronicle") : t("showChronicle")}>
               <span className="ledger-title">{t("chronicle")}</span>
@@ -674,55 +842,10 @@ export function App() {
         </div>
       ) : null}
 
-      {person ? (
+      {person && view !== "map" ? (
         <div className="overlay" onClick={() => setPerson(null)}>
           <div className="dialog" role="dialog" aria-modal="true" aria-label={person.name} onClick={(event) => event.stopPropagation()}>
-            <h2>{person.name}</h2>
-            <p className="lede">
-              {person.clan_name ? `${person.clan_name}, ` : ""}
-              {person.died_year === null ? `${t("age")} ${person.age}` : `${t("died")} ${t("year")} ${person.died_year}, ${t("age")} ${person.age}`}
-            </p>
-            <dl>
-              {person.died_year === null ? (
-                <>
-                  <dt>{t("doing")}</dt>
-                  <dd>{person.activity_text || (person.age < 16 ? t("tooYoung") : t("nothingNow"))}</dd>
-                </>
-              ) : null}
-              {person.work_months.length > 0 ? (
-                <>
-                  <dt>{t("lifeWork")}</dt>
-                  <dd>{person.work_months.map((entry) => `${entry.text}: ${entry.months} ${t("months")}`).join(", ")}</dd>
-                </>
-              ) : null}
-              <dt>{t("family")}</dt>
-              <dd>
-                {[
-                  person.mother ? [t("mother"), [person.mother]] : null,
-                  person.father ? [t("father"), [person.father]] : null,
-                  person.partner ? [t("partner"), [person.partner]] : null,
-                  person.children.length ? [t("childrenOf"), person.children] : null,
-                ]
-                  .filter((entry): entry is [string, { id: number; name: string }[]] => entry !== null)
-                  .map(([label, relatives]) => (
-                    <span key={label} className="kin">
-                      {label}:{" "}
-                      {relatives.map((relative) => (
-                        <button key={relative.id} className="plain name" onClick={() => showPerson(relative.id)}>
-                          {relative.name}
-                        </button>
-                      ))}
-                    </span>
-                  ))}
-              </dd>
-              <dt>{t("nature")}</dt>
-              <dd>
-                {Object.entries(person.traits)
-                  .map(([trait, value]) => `${t(trait as "vigor" | "curiosity" | "sociability" | "craft")} ${value}`)
-                  .join(", ")}
-                , {person.tiles_moved} {t("walked")}
-              </dd>
-            </dl>
+            <PersonCard person={person} t={t} onPerson={showPerson} />
             <button className="solid" onClick={() => setPerson(null)}>
               {t("close")}
             </button>

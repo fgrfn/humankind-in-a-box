@@ -1,4 +1,7 @@
-"""The HTTP API. It only reads: the worker is the single writer of the database.
+"""The HTTP API. It only reads the database: the worker is its single writer.
+
+The one thing that can be changed from outside is how fast the world runs, and
+that goes through a small file the worker reads (see hiab.control).
 
 Everything the browser shows comes from here, and so does everything an
 external consumer (a REST sensor, a script) can ask.
@@ -6,18 +9,21 @@ external consumer (a REST sensor, a script) can ask.
 
 import asyncio
 import json
+import secrets
 import sqlite3
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import numpy as np
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from hiab import __version__
+from hiab.control import SPEEDS, Control, read_control, read_pace, write_control
 from hiab.packs import BIOMES, PackSet
 from hiab.render import calendar, meaning_text, render_event
 
@@ -34,7 +40,22 @@ def _layer(blob: bytes) -> list[int]:
     return values
 
 
-def create_app(db_path: Path, packs: PackSet, default_language: Language = "de") -> FastAPI:
+class SpeedWish(BaseModel):
+    """What the interface may ask of the worker. Nothing else can be changed from outside."""
+
+    paused: bool | None = None
+    speed: int | None = None
+    for_years: int | None = Field(None, ge=1, le=100000)
+
+
+def create_app(
+    db_path: Path,
+    packs: PackSet,
+    default_language: Language = "de",
+    data_dir: Path | None = None,
+    api_token: str | None = None,
+    pace: float = 120.0,
+) -> FastAPI:
     app = FastAPI(
         title="Humankind in a Box",
         version=__version__,
@@ -356,6 +377,62 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
         ).fetchone()
         clans = _layer(found["data"])
         return clans, [0] * len(clans) if held is None else _layer(held["data"])
+
+    def speed_out(conn: sqlite3.Connection) -> dict[str, Any]:
+        wanted = Control() if data_dir is None else read_control(data_dir)
+        report = {} if data_dir is None else read_pace(data_dir)
+        latest = conn.execute("SELECT tick FROM worlds ORDER BY id DESC LIMIT 1").fetchone()
+        return {
+            **wanted.as_dict(),
+            "speeds": list(SPEEDS),
+            "days_per_minute": pace,
+            "measured_days_per_minute": report.get("days_per_minute"),
+            "running": bool(report.get("running", False)),
+            "year": 0 if latest is None else latest["tick"] // 360,
+            "changeable": data_dir is not None,
+            "token_required": bool(api_token),
+        }
+
+    @api.get("/control")
+    def control(conn: Db) -> dict[str, Any]:
+        """How fast the world runs: what is wanted and what the worker reports."""
+        return speed_out(conn)
+
+    @api.put("/control")
+    def set_control(
+        wish: SpeedWish,
+        conn: Db,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> dict[str, Any]:
+        """Pause, resume or speed up. Does not change what happens, only how fast.
+
+        Written to a small file the worker reads; the database is not touched.
+        """
+        if data_dir is None:
+            raise HTTPException(409, "This server has no data directory to pass the wish on.")
+        if api_token and not secrets.compare_digest(
+            (authorization or "").encode(), f"Bearer {api_token}".encode()
+        ):
+            raise HTTPException(401, "The API token is required to change the speed.")
+        if wish.speed is not None and wish.speed not in SPEEDS:
+            raise HTTPException(422, f"speed must be one of {list(SPEEDS)}")
+        now = read_control(data_dir)
+        speed = now.speed if wish.speed is None else wish.speed
+        until = now.until_year if wish.speed is None else None
+        if wish.for_years is not None and speed != 1:
+            latest = conn.execute("SELECT tick FROM worlds ORDER BY id DESC LIMIT 1").fetchone()
+            until = (0 if latest is None else latest["tick"] // 360) + wish.for_years
+        if speed == 1:
+            until = None
+        write_control(
+            data_dir,
+            Control(
+                paused=now.paused if wish.paused is None else wish.paused,
+                speed=speed,
+                until_year=until,
+            ),
+        )
+        return speed_out(conn)
 
     @api.get("/worlds/{world_id}/stores")
     def stores(world_id: int, conn: Db, lang: Lang = default_language) -> list[dict[str, Any]]:

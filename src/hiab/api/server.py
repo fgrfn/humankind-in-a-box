@@ -27,7 +27,14 @@ def serve(settings_data: dict[str, Any], db_path: str) -> None:
         settings.data_dir / "logs" if settings.log_to_file else None,
     )
     packs = load_packs(settings.packs, settings.data_dir)
-    app = create_app(Path(db_path), packs, settings.language)
+    app = create_app(
+        Path(db_path),
+        packs,
+        settings.language,
+        data_dir=settings.data_dir,
+        api_token=settings.api_token,
+        pace=settings.pace,
+    )
     log.info("api listening", extra={"bind": settings.bind, "port": settings.port})
     uvicorn.run(app, host=settings.bind, port=settings.port, log_level="warning", access_log=False)
 
