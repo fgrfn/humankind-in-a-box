@@ -273,12 +273,13 @@ function TimeControl({ lang, t }: { lang: Lang; t: Translate }) {
   if (!speed || !speed.changeable) return null;
 
   const rate = speed.measured_days_per_minute ?? 0;
+  // From a year a minute on, years say more than days.
   const shown = speed.paused
     ? t("paused")
     : !speed.running
       ? t("notRunning")
-      : rate >= 720
-        ? `${formatNumber(Math.round((rate / 360) * 10) / 10, lang)} ${t("perMinuteYears")}`
+      : rate >= 360
+        ? `${formatNumber(rate >= 3600 ? Math.round(rate / 360) : Math.round((rate / 360) * 10) / 10, lang)} ${t("perMinuteYears")}`
         : `${formatNumber(Math.round(rate), lang)} ${t("perMinuteDays")}`;
   return (
     <div className="time" role="group" aria-label={t("time")}>
