@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Discovery, type Group, type Lang, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
+import { api, type Discovery, type Group, type Human, type Lang, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
 import { Chart, SERIES_COLOURS, type Point } from "./Chart";
 import { HistoryBand, type Mark } from "./HistoryBand";
 import { formatNumber, translator, type TextKey } from "./i18n";
@@ -183,7 +183,7 @@ function Numbers({ stats, series, discoveries, lang, t }: { stats: Stats; series
   );
 }
 
-function ClanDetail({ detail, t, onShow }: { detail: Group; t: Translate; onShow: () => void }) {
+function ClanDetail({ detail, t, onShow, onPerson }: { detail: Group; t: Translate; onShow: () => void; onPerson: (id: number) => void }) {
   return (
     <article className="detail">
       <h2>{detail.name}</h2>
@@ -228,8 +228,13 @@ function ClanDetail({ detail, t, onShow }: { detail: Group; t: Translate; onShow
       <ul className="members">
         {(detail.members ?? []).slice(0, 60).map((member) => (
           <li key={member.id}>
-            <span>{member.name}</span>
-            <small>{member.age}</small>
+            <button className="plain name" onClick={() => onPerson(member.id)}>
+              {member.name}
+            </button>
+            <small>
+              {member.activity_text ? `${member.activity_text}, ` : ""}
+              {member.age}
+            </small>
           </li>
         ))}
       </ul>
@@ -246,6 +251,8 @@ export function App() {
   const [steps, setSteps] = useState<number[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
+  const [people, setPeople] = useState<Human[]>([]);
+  const [person, setPerson] = useState<PersonDetail | null>(null);
   const [events, setEvents] = useState<WorldEvent[]>([]);
   const [series, setSeries] = useState<Series>({});
   const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
@@ -317,6 +324,23 @@ export function App() {
       setMarks(found.map((event) => ({ year: event.year, text: event.text })));
     },
     30,
+    [worldId, lang],
+  );
+
+  usePolling(
+    async () => {
+      if (worldId === null) return;
+      setPeople(await api.people(worldId, lang));
+    },
+    15,
+    [worldId, lang],
+  );
+
+  const showPerson = useCallback(
+    (id: number) => {
+      if (worldId === null) return;
+      void api.person(worldId, id, lang).then(setPerson);
+    },
     [worldId, lang],
   );
 
@@ -426,7 +450,7 @@ export function App() {
 
       <main>
         <div className="stage" hidden={view !== "map"}>
-          <MapView map={map} steps={steps} groups={groups} places={places} selected={selected} focus={focus} onSelect={selectFromMap} />
+          <MapView map={map} steps={steps} groups={groups} places={places} people={people} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
           <aside className={`ledger ${ledgerOpen ? "open" : ""}`} aria-label={t("chronicle")}>
             <button className="ledger-head" onClick={() => setLedgerOpen((open) => !open)} aria-expanded={ledgerOpen} title={ledgerOpen ? t("hideChronicle") : t("showChronicle")}>
               <span className="ledger-title">{t("chronicle")}</span>
@@ -458,7 +482,7 @@ export function App() {
                 </li>
               ))}
             </ul>
-            {detail ? <ClanDetail detail={detail} t={t} onShow={() => showOnMap(detail.id)} /> : <p className="note pick">{t("pickClan")}</p>}
+            {detail ? <ClanDetail detail={detail} t={t} onShow={() => showOnMap(detail.id)} onPerson={showPerson} /> : <p className="note pick">{t("pickClan")}</p>}
           </div>
         ) : null}
       </main>
@@ -470,6 +494,62 @@ export function App() {
           </button>
         ))}
       </nav>
+
+      {person ? (
+        <div className="overlay" onClick={() => setPerson(null)}>
+          <div className="dialog" role="dialog" aria-modal="true" aria-label={person.name} onClick={(event) => event.stopPropagation()}>
+            <h2>{person.name}</h2>
+            <p className="lede">
+              {person.clan_name ? `${person.clan_name}, ` : ""}
+              {person.died_year === null ? `${t("age")} ${person.age}` : `${t("died")} ${t("year")} ${person.died_year}, ${t("age")} ${person.age}`}
+            </p>
+            <dl>
+              {person.died_year === null ? (
+                <>
+                  <dt>{t("doing")}</dt>
+                  <dd>{person.activity_text || (person.age < 16 ? t("tooYoung") : t("nothingNow"))}</dd>
+                </>
+              ) : null}
+              {person.work_months.length > 0 ? (
+                <>
+                  <dt>{t("lifeWork")}</dt>
+                  <dd>{person.work_months.map((entry) => `${entry.text}: ${entry.months} ${t("months")}`).join(", ")}</dd>
+                </>
+              ) : null}
+              <dt>{t("family")}</dt>
+              <dd>
+                {[
+                  person.mother ? [t("mother"), [person.mother]] : null,
+                  person.father ? [t("father"), [person.father]] : null,
+                  person.partner ? [t("partner"), [person.partner]] : null,
+                  person.children.length ? [t("childrenOf"), person.children] : null,
+                ]
+                  .filter((entry): entry is [string, { id: number; name: string }[]] => entry !== null)
+                  .map(([label, relatives]) => (
+                    <span key={label} className="kin">
+                      {label}:{" "}
+                      {relatives.map((relative) => (
+                        <button key={relative.id} className="plain name" onClick={() => showPerson(relative.id)}>
+                          {relative.name}
+                        </button>
+                      ))}
+                    </span>
+                  ))}
+              </dd>
+              <dt>{t("nature")}</dt>
+              <dd>
+                {Object.entries(person.traits)
+                  .map(([trait, value]) => `${t(trait as "vigor" | "curiosity" | "sociability" | "craft")} ${value}`)
+                  .join(", ")}
+                , {person.tiles_moved} {t("walked")}
+              </dd>
+            </dl>
+            <button className="solid" onClick={() => setPerson(null)}>
+              {t("close")}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {why ? (
         <div className="overlay" onClick={() => setWhy(null)}>

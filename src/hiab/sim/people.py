@@ -46,6 +46,13 @@ class Person:
     discoveries: int = 0
     died: int | None = None
     cause: str | None = None
+    # What the person does this month: a food resource they go out for,
+    # "build:<building>", or "" for children. Where they do it, and how many
+    # months of their life went into each kind of work.
+    activity: str = ""
+    target_y: int = -1
+    target_x: int = -1
+    work: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -107,6 +114,7 @@ class Society:
         self.retired: dict[int, Clan] = {}  # clans dissolved since the last save
         self.dead: dict[int, Person] = {}  # people who died since the last save
         self.vanished: set[int] = set()  # ruins that disappeared since the last save
+        self._effort: dict[int, int] = {}  # this month's building work per clan
 
     # ---- small helpers --------------------------------------------------
 
@@ -356,7 +364,10 @@ class Society:
             return
         harvest_percent, _mortality, storage_months = self.effects(clan)
         capacity = need * storage_months
-        want = min(need + max(0, capacity - clan.food), adults * p.harvest_per_adult_month)
+        _builders, foragers = self.crews(clan)
+        # A strong forager brings home more than a weak one.
+        strength = sum(50 + person.traits[0] for person in foragers)
+        want = min(need + max(0, capacity - clan.food), strength * p.harvest_per_adult_month // 100)
         area = self.window(clan.y, clan.x, self.radius(clan))
 
         raws: dict[str, np.ndarray] = {}
@@ -371,12 +382,8 @@ class Society:
                 raws[rid], foods[rid] = raw, amount
         total = sum(foods.values())
         take_total = min(want, total)
-        if raws:
-            # People walk to where there is most to get. The footsteps become paths.
-            richest = np.sum([raws[rid] for rid in sorted(raws)], axis=0)
-            ty, tx = divmod(int(np.argmax(richest)), richest.shape[1])
-            self.walk(clan.y, clan.x, area[0].start + ty, area[1].start + tx, max(1, adults))
         gathered = 0
+        takes: dict[str, int] = {}
         for rid in sorted(foods):
             take = take_total * foods[rid] // total
             if take <= 0:
@@ -384,7 +391,9 @@ class Society:
             reduction = raws[rid] * take // foods[rid]
             world.stocks[rid][area] = (world.stocks[rid][area] - reduction).astype(np.int32)
             gathered += take
+            takes[rid] = take
             world.count(f"food.{rid}.gathered", take)
+        self.send_out(clan, foragers, takes or foods, raws, area)
 
         clan.food += gathered
         eaten = min(clan.food, need)
@@ -399,6 +408,80 @@ class Society:
         if starving and not clan.famine:
             world.emit("famine", data={"clan": clan.name, "clan_id": clan.id})
         clan.famine = starving
+
+    def crews(self, clan: Clan) -> tuple[list[Person], list[Person]]:
+        """Who builds and who goes out for food this month.
+
+        Children do neither. With an open construction site and enough to eat,
+        a share of the adults builds, the most skilful first. The rest forage.
+        """
+        adults = sorted(self.adults(clan), key=lambda person: person.id)
+        grown = {person.id for person in adults}
+        for person_id in clan.members:
+            person = self.persons[person_id]
+            if person.activity and person_id not in grown:
+                person.activity, person.target_y, person.target_x = "", -1, -1
+                self.dirty_persons.add(person.id)
+        self._effort.pop(clan.id, None)
+        site = None
+        if clan.settled:
+            place = self.places[clan.place]
+            site = next((b for b in place["buildings"] if b["state"] == "site"), None)
+        hungry = (clan.unmet[-1] if clan.unmet else 0) >= 20
+        if site is None or hungry or len(adults) < 2:
+            return [], adults
+        count = max(1, len(adults) * self.p.builders_share_percent // 100)
+        skilled = sorted(adults, key=lambda person: (-person.traits[3], person.id))
+        builders = sorted(skilled[:count], key=lambda person: person.id)
+        chosen = {person.id for person in builders}
+        self._effort[clan.id] = max(1, sum(50 + person.traits[3] for person in builders) // 100)
+        self.set_work(builders, f"build:{site['type']}", site["y"], site["x"])
+        self.walk(clan.y, clan.x, site["y"], site["x"], len(builders))
+        return builders, [person for person in adults if person.id not in chosen]
+
+    def set_work(self, people: list[Person], activity: str, y: int, x: int) -> None:
+        kind = activity.split(":", 1)[0]
+        for person in people:
+            person.activity, person.target_y, person.target_x = activity, y, x
+            person.work[kind] = person.work.get(kind, 0) + 1
+            self.dirty_persons.add(person.id)
+        if people:
+            self.world.count(f"work.{kind}", len(people))
+
+    def send_out(
+        self,
+        clan: Clan,
+        foragers: list[Person],
+        shares: dict[str, int],
+        raws: dict[str, np.ndarray],
+        area: tuple[slice, slice],
+    ) -> None:
+        """Give every forager a food to go out for, in proportion to what each food yields.
+
+        Each group walks to the tile where its food is richest. The footsteps become paths.
+        """
+        if not foragers:
+            return
+        foods = [rid for rid in sorted(shares) if shares[rid] > 0 and rid in raws]
+        if not foods:
+            self.set_work(foragers, "search", clan.y, clan.x)
+            return
+        total = sum(shares[rid] for rid in foods)
+        counts = {rid: len(foragers) * shares[rid] // total for rid in foods}
+        # Hands left over by rounding go to the foods with the largest share.
+        by_share = sorted(foods, key=lambda rid: (-shares[rid], rid))
+        for index in range(len(foragers) - sum(counts.values())):
+            counts[by_share[index % len(by_share)]] += 1
+        start = 0
+        for rid in by_share:
+            crew = foragers[start : start + counts[rid]]
+            start += counts[rid]
+            if not crew:
+                continue
+            ty, tx = divmod(int(np.argmax(raws[rid])), raws[rid].shape[1])
+            y, x = area[0].start + ty, area[1].start + tx
+            self.set_work(crew, rid, y, x)
+            self.walk(clan.y, clan.x, y, x, len(crew))
 
     # ---- one year in a life ----------------------------------------------
 
@@ -836,9 +919,10 @@ class Society:
                 },
             )
             return
-        if unmet_now >= 20:
-            return  # hungry people do not build
-        site["progress"] += len(self.adults(clan))
+        effort = self._effort.get(clan.id, 0)
+        if unmet_now >= 20 or effort <= 0:
+            return  # hungry people do not build, and a site begun this month waits for hands
+        site["progress"] += effort
         self.dirty_places.add(place["id"])
         if site["progress"] >= packs.buildings[site["type"]].work:
             site["state"], site["finished"] = "standing", world.tick

@@ -166,3 +166,27 @@ def test_frontend_and_sprites_are_served(client: TestClient) -> None:
         "travellers",
     } <= set(atlas["frames"])
     assert client.get("/sprites/atlas.png").headers["content-type"] == "image/png"
+
+
+def test_people_and_what_they_do(client: TestClient) -> None:
+    people = client.get("/api/v1/worlds/1/people").json()
+    assert len(people) == client.get("/api/v1/worlds/1/stats").json()["population"]
+    working = [person for person in people if person["activity"]]
+    assert working and all(person["text"] for person in working)
+    assert all(person["age"] >= 15 for person in working)
+    english = client.get("/api/v1/worlds/1/people", params={"lang": "en"}).json()
+    assert {person["text"] for person in english} <= {
+        "",
+        "gathering plants",
+        "hunting",
+        "fishing",
+        "searching for food",
+        "building: Gathering fire",
+        "building: Hut",
+    }
+    detail = client.get(f"/api/v1/worlds/1/persons/{working[0]['id']}").json()
+    assert detail["activity"] == working[0]["activity"]
+    assert detail["clan_name"]
+    assert sum(entry["months"] for entry in detail["work_months"]) > 0
+    group = client.get(f"/api/v1/worlds/1/groups/{working[0]['clan']}").json()
+    assert any(member["activity_text"] for member in group["members"])

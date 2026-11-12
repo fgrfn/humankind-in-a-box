@@ -13,6 +13,7 @@ from typing import Annotated, Any, Literal
 
 import numpy as np
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -41,6 +42,8 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
         openapi_url="/api/openapi.json",
         redoc_url=None,
     )
+    # The map and the list of people are long and repetitive; compressed they are small.
+    app.add_middleware(GZipMiddleware, minimum_size=2000)
     api = APIRouter(prefix="/api/v1")
 
     def connect() -> sqlite3.Connection:
@@ -356,7 +359,7 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
         item = group_out(conn, row, lang)
         members = _rows(
             conn,
-            "SELECT id, name, sex, born, children FROM persons "
+            "SELECT id, name, sex, born, children, activity FROM persons "
             "WHERE world_id = ? AND clan = ? AND died IS NULL ORDER BY born",
             (world_id, group_id),
         )
@@ -369,13 +372,57 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
                 "sex": "f" if member["sex"] == 0 else "m",
                 "age": (tick - member["born"]) // 360,
                 "children": member["children"],
+                "activity": member["activity"],
+                "activity_text": activity_text(member["activity"], lang),
             }
             for member in members
         ]
         return item
 
+    def activity_text(activity: str, language: Language) -> str:
+        """What a person is doing this month, in words."""
+        kind, _, detail = activity.partition(":")
+        if kind == "build" and not detail:
+            return "baut" if language == "de" else "building"
+        if kind == "build":
+            known = packs.buildings.get(detail)
+            name = detail if known is None else getattr(known.name, language)
+            return f"baut: {name}" if language == "de" else f"building: {name}"
+        if kind == "search":
+            return "sucht Nahrung" if language == "de" else "searching for food"
+        resource = packs.resources.get(kind)
+        if resource is None:
+            return ""
+        return getattr(resource.work or resource.name, language)
+
+    @api.get("/worlds/{world_id}/people")
+    def people(world_id: int, conn: Db, lang: Lang = default_language) -> list[dict[str, Any]]:
+        """Everybody alive: who they are, what they do this month and where."""
+        tick = world_row(conn, world_id)["tick"]
+        return [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "sex": "f" if row["sex"] == 0 else "m",
+                "age": (tick - row["born"]) // 360,
+                "clan": row["clan"],
+                "activity": row["activity"],
+                "text": activity_text(row["activity"], lang),
+                "y": row["target_y"],
+                "x": row["target_x"],
+            }
+            for row in _rows(
+                conn,
+                "SELECT id, name, sex, born, clan, activity, target_y, target_x FROM persons "
+                "WHERE world_id = ? AND died IS NULL ORDER BY id",
+                (world_id,),
+            )
+        ]
+
     @api.get("/worlds/{world_id}/persons/{person_id}")
-    def person(world_id: int, person_id: int, conn: Db) -> dict[str, Any]:
+    def person(
+        world_id: int, person_id: int, conn: Db, lang: Lang = default_language
+    ) -> dict[str, Any]:
         row = conn.execute(
             "SELECT * FROM persons WHERE world_id = ? AND id = ?", (world_id, person_id)
         ).fetchone()
@@ -400,6 +447,9 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             (world_id, person_id, person_id),
         )
         traits = json.loads(row["traits"])
+        clan_row = conn.execute(
+            "SELECT name FROM groups WHERE world_id = ? AND id = ?", (world_id, row["clan"])
+        ).fetchone()
         return {
             "id": row["id"],
             "name": row["name"],
@@ -409,6 +459,7 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             "cause": row["cause"],
             "age": (end - row["born"]) // 360,
             "clan": row["clan"],
+            "clan_name": None if clan_row is None else clan_row["name"],
             "mother": relative(row["mother"]),
             "father": relative(row["father"]),
             "partner": relative(row["partner"]),
@@ -417,6 +468,14 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
                 zip(("vigor", "curiosity", "sociability", "craft"), traits, strict=False)
             ),
             "tiles_moved": row["moved"],
+            "activity": row["activity"] if row["died"] is None else "",
+            "activity_text": activity_text(row["activity"], lang) if row["died"] is None else "",
+            "work_months": [
+                {"activity": kind, "text": activity_text(kind, lang) or kind, "months": months}
+                for kind, months in sorted(
+                    json.loads(row["work"]).items(), key=lambda item: (-item[1], item[0])
+                )
+            ],
             "discoveries": row["discoveries"],
         }
 

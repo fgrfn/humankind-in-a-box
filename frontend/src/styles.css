@@ -204,3 +204,17 @@ main { min-height: 0; position: relative; overflow: hidden; }
   .clans-page .detail, .clans-page .pick { order: -1; }
   .members { columns: 2 130px; }
 }
+
+/* Names of people open their card. */
+button.plain.name {
+  min-height: 0;
+  padding: 0;
+  margin-right: 0.5em;
+  font: inherit;
+  color: var(--chalk, #ece6d6);
+  text-decoration: underline;
+  text-decoration-color: var(--line, #2c4b59);
+  text-underline-offset: 3px;
+}
+button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
+.kin { display: block; }

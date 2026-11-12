@@ -6,7 +6,8 @@
 - Stufe 1a (Menschen) ist umgesetzt: Personen, Familien, Clans, Nahrungssuche, Hunger, Wanderung, Entdeckungen, Wissensweitergabe, Clan-Spaltung und -Verschmelzung, erste Siedlungen.
 - Stufe 1b (API, Kartenansicht, erste Statistik, Docker-Image) ist umgesetzt. Damit ist Stufe 1 bis auf die Feinabstimmung abgeschlossen.
 - Stufe 2a (Wege und Gebäude) ist umgesetzt: Trittzähler verblassen, aus viel begangenen Kacheln werden Pfade und Wege. Sesshafte Clans bauen nach und nach (Baustelle, fertiges Gebäude, Ruine), Gebäude wirken auf Sterblichkeit und Vorrat. Alte Alltagsereignisse werden ausgedünnt (`HIAB_EVENT_DETAIL_YEARS`, Vorgabe 100).
-- Die Karte zeigt echte Grafik aus fünf erzeugten Bögen, zugeschnitten mit `tools/build_atlas.py`: 16 Geländekacheln, 8 Naturobjekte, 8 Gebäudebilder (Feuer, Zelt, Hütte, Trockengestell, Vorratsgrube, Töpferofen, Baustelle, Ruine) und 8 Figuren. Wandernde Clans erscheinen als Zelt. Die Menschen sind unterwegs: Figuren laufen vom Lager zu Arbeitsplätzen und zurück (sammeln im Bewuchs, fischen am Ufer, jagen weiter draußen, bauen an der Baustelle), passend zu Wissen und Baustellen des Clans. Das ist Anzeige: Die Simulation rechnet weiter monatsweise je Clan, einzelne Schritte werden nicht gespeichert.
+- Die Karte zeigt echte Grafik aus fünf erzeugten Bögen, zugeschnitten mit `tools/build_atlas.py`: 16 Geländekacheln, 8 Naturobjekte, 8 Gebäudebilder (Feuer, Zelt, Hütte, Trockengestell, Vorratsgrube, Töpferofen, Baustelle, Ruine) und 8 Figuren. Wandernde Clans erscheinen als Zelt. Jede Figur auf der Karte ist ein lebender Mensch: Sie läuft vom Lager dorthin, wo sie laut Simulation diesen Monat arbeitet, und zurück. Antippen zeigt, wer das ist, was er tut und womit sein Leben verging. Der einzelne Schritt ist Anzeige, Tätigkeit und Ziel kommen aus der Simulation.
+- Tätigkeiten pro Person: Jeder Erwachsene hat jeden Monat eine Arbeit (ein Nahrungsmittel beschaffen, bauen, Nahrung suchen) und ein Ziel. Bei offener Baustelle baut etwa ein Viertel der Erwachsenen, die Geschicktesten zuerst; die anderen teilen sich nach Ertrag auf die Nahrungsquellen auf. Kraft bestimmt, wie viel ein Sammler heimbringt, Geschick den Baufortschritt. Jede Gruppe läuft zu ihrem eigenen Ziel, daraus entstehen die Pfade. Gezählt wird je Person (Lebensmonate je Tätigkeit) und je Welt (`work.*`).
 - Als Nächstes der Rest von Stufe 2: Völker, voller Entdeckungsgraph, Wissensverlust, Handel, Kulturen mit Sprache.
 - Noch offen: Lizenz-Entscheidung, Prüfung von PyPI-Name und Domain, Bogen für Tiere.
 
@@ -40,7 +41,6 @@ Zehn Seeds über 400 Jahre auf einer Karte von 64 x 64 Kacheln: alle zehn Welten
 ## Bekannte Schwächen
 
 - Die Vorgabe für die Karte ist jetzt 128 x 128 Kacheln (vorher 64 x 64). Seed 5 über 400 Jahre: rund 3.300 Menschen in 220 Clans, 29 Sekunden Rechenzeit. Die Kalibrierung unten stammt noch von der kleinen Karte. Bestehende Welten behalten ihre Größe.
-- Tätigkeiten einzelner Personen gibt es in der Simulation noch nicht, nur in der Anzeige.
 
 - Siedlungen halten ohne Ackerbau im Schnitt nur etwa eine Generation, dann treibt der Hunger die Leute weiter. Das ist für Jäger und Sammler plausibel, sorgt aber für viele Ruinen. Dauerhafte Orte kommen mit dem Ackerbau.
 - Objekte auf der Karte (Bäume, Felsen) sind reine Anzeige aus Biom und Koordinate, sie hängen noch nicht am Holzbestand der Kachel.
