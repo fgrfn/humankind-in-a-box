@@ -41,3 +41,11 @@ The owner wants a life simulation: people who visibly do things. Decision: the m
 - Foragers are split over the foods in proportion to what each yields this month; each crew walks to the richest tile of its food. Harvest capacity is the foragers' vigor.
 - The map shows one figure per living person walking to that target. The steps on screen are display only and never stored.
 - Not yet: daily routines, individual skills that grow with practice, tools carried by a person. Activities are the place to hang those on later.
+
+## 2026-11-12: leaders and chiefdoms
+
+- A clan's leader is chosen without dice: twice sociability plus vigor, craft and age (capped at 45), ties to the lowest id. Leadership is a fact of who is there, not luck; the dice decide what the leader achieves.
+- A chiefdom is the first binding above the clan. It is named after the seat's place. Clans join one a year, so a realm grows over generations rather than at once.
+- Rule is fragile at the start: succession is the moment clans may leave (`realm_break_on_succession`), and a seat left alone after a succession ends the chiefdom.
+- Chiefdoms keep their clans inside their people (factor 0.2 on drifting apart). This is how large peoples arise, as the owner asked, instead of by raising `people_max_clans`.
+- Realms and peoples are shown one at a time on the map, so realms reuse the twelve fixed colours, stepping five places per id so that neighbours founded close in time differ.

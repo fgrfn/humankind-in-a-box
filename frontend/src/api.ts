@@ -18,6 +18,7 @@ export interface Stats extends Calendar {
   discoveries_possible: number;
   peoples: number;
   trade_partnerships: number;
+  realms?: number;
   births_total: number;
   deaths_total: number;
   migrations_total: number;
@@ -87,8 +88,32 @@ export interface Group {
   technologies: Technology[];
   buildings: Building[];
   partners: { id: number; name: string; since_year: number }[];
+  leader?: { id: number; name: string } | null;
+  realm?: { id: number; name: string; seat: boolean } | null;
   stores: Store[];
   members?: { id: number; name: string; sex: "f" | "m"; age: number; children: number; activity: string; activity_text: string }[];
+}
+
+export interface Realm {
+  id: number;
+  name: string;
+  founded_year: number;
+  ended_year: number | null;
+  seat_id: number;
+  seat: string | null;
+  ruler_id: number;
+  ruler: string | null;
+  people_id: number;
+  people: string | null;
+  clans: number[];
+  population: number;
+  tiles: number;
+}
+
+export interface Land {
+  clans: number[];
+  peoples: number[];
+  realms: number[];
 }
 
 export interface People {
@@ -278,7 +303,8 @@ export const api = {
   stores: (world: number, lang: Lang) => get<{ id: string; name: string; amount: number }[]>(`/worlds/${world}/stores?lang=${lang}`),
   trade: (world: number) => get<TradeLink[]>(`/worlds/${world}/trade`),
   since: (world: number, year: number, lang: Lang) => get<Since>(`/worlds/${world}/since?year=${year}&lang=${lang}`),
-  territory: (world: number) => get<{ clans: number[]; peoples: number[] }>(`/worlds/${world}/territory`),
+  territory: (world: number) => get<Land>(`/worlds/${world}/territory`),
+  realms: (world: number) => get<Realm[]>(`/worlds/${world}/realms`),
   peoples: (world: number) => get<People[]>(`/worlds/${world}/peoples`),
   people: (world: number, lang: Lang) => get<Human[]>(`/worlds/${world}/people?lang=${lang}`),
   // Two generations each way: a pedigree doubles with every generation, and on a

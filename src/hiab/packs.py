@@ -194,6 +194,17 @@ class LifeParams(_Model):
     # their speech has drifted far. Large peoples need something to bind them
     # (a ruler, a faith), which comes with later stages.
     people_max_clans: int = Field(10, ge=1, le=10000)
+    # Rule. Every clan follows one of its adults. A settled clan with a strong
+    # leader and neighbours around may found a chiefdom; other clans come under
+    # it, mostly of the same people. Clans of a chiefdom help each other through
+    # hunger, learn from each other and hold to their people. When a ruler dies,
+    # or a clan has moved too far from the seat, the bond may break.
+    realm_min_adults: int = Field(12, ge=1, le=10000)
+    realm_found_chance_per_year: float = Field(0.01, ge=0.0, le=1.0)
+    realm_join_chance_per_year: float = Field(0.04, ge=0.0, le=1.0)
+    realm_reach: int = Field(14, ge=1, le=200)
+    realm_max_clans: int = Field(10, ge=1, le=10000)
+    realm_break_on_succession: float = Field(0.2, ge=0.0, le=1.0)
     # Land. Every clan holds the tiles around its camp on which nobody presses
     # harder. How hard it presses follows from its adults, what it has built and
     # whether it is settled; hunger weakens it. Strangers gather less on held land.

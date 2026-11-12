@@ -40,7 +40,7 @@ h2, h3, p { margin: 0; }
 }
 .brand { display: flex; align-items: center; gap: 9px; font: 600 18px/1 var(--prose); letter-spacing: 0.01em; }
 .glyph { width: 22px; height: 22px; color: var(--ochre); flex: none; }
-.now { display: flex; gap: 14px; align-items: baseline; color: var(--muted); flex: 1; min-width: 0; white-space: nowrap; }
+.now { display: flex; gap: 14px; align-items: baseline; color: var(--muted); flex: 1 0 auto; white-space: nowrap; }
 .now strong { font: 600 19px/1 var(--prose); color: var(--ochre); font-variant-numeric: tabular-nums; }
 
 .views { display: flex; gap: 2px; }
@@ -261,8 +261,12 @@ button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 .time .rate { margin-left: 8px; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .time .token { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: end; padding-top: 6px; font-size: 14px; color: var(--chalk); }
 .time .token input { display: block; margin-top: 4px; min-height: 36px; padding: 0 8px; color: var(--chalk); background: var(--deep); border: 1px solid var(--line); border-radius: 6px; }
+/* The speed buttons get a row of their own before they would crowd the year. */
+@media (max-width: 1500px) {
+  .time { order: 5; flex-basis: 100%; margin: 2px 0 0; }
+}
 @media (max-width: 900px) {
-  .time { order: 5; flex-basis: 100%; margin: 6px 0 0; }
+  .time { margin-top: 6px; }
   .time button { min-height: 40px; }
 }
 

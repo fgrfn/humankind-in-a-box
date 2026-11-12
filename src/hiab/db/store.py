@@ -234,6 +234,21 @@ MIGRATIONS: list[str] = [
     CREATE INDEX persons_by_mother ON persons (world_id, mother);
     CREATE INDEX persons_by_father ON persons (world_id, father);
     """,
+    """
+    CREATE TABLE realms (
+        world_id INTEGER NOT NULL,
+        id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        founded INTEGER NOT NULL,
+        ended INTEGER,
+        seat_group INTEGER NOT NULL,
+        ruler INTEGER NOT NULL,
+        people INTEGER NOT NULL,
+        PRIMARY KEY (world_id, id)
+    ) WITHOUT ROWID;
+    ALTER TABLE groups ADD COLUMN leader INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE groups ADD COLUMN realm INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -255,6 +270,7 @@ CONTENT_TABLES: dict[str, str] = {
     "buildings": "world_id, id",
     "cultures": "world_id, id",
     "trade_links": "world_id, group_a, group_b, since",
+    "realms": "world_id, id",
 }
 
 
@@ -493,6 +509,8 @@ class Store:
                             "last_year": dict(sorted(clan.last_flows.items())),
                         }
                     ),
+                    clan.leader,
+                    clan.realm,
                 )
             )
         self.conn.executemany(
@@ -522,7 +540,23 @@ class Store:
             ],
         )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
+            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
+        )
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO realms VALUES (?,?,?,?,?,?,?,?)",
+            [
+                (
+                    world.id,
+                    realm.id,
+                    realm.name,
+                    realm.founded,
+                    realm.ended,
+                    realm.seat,
+                    realm.ruler,
+                    realm.people,
+                )
+                for realm in (society.realms[rid] for rid in sorted(society.dirty_realms))
+            ],
         )
         self.conn.executemany(
             "INSERT OR REPLACE INTO discoveries VALUES (?,?,?,?,?,?,NULL)",

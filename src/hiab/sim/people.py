@@ -66,6 +66,8 @@ class Clan:
     month: int  # month of the year in which the clan's yearly matters are decided
     language: dict[str, str]
     culture: int = 0  # the people the clan belongs to
+    leader: int = 0  # the adult the clan follows
+    realm: int = 0  # the chiefdom the clan belongs to, 0 for none
     partners: dict[int, int] = field(default_factory=dict)  # trading partner -> since tick
     # Goods besides food, by resource. And what came and went this year and
     # last, by good ("food" included): [gained, used, traded in, traded out].
@@ -81,6 +83,19 @@ class Clan:
     place: int = 0
     famine: bool = False
     dissolved: int | None = None
+
+
+@dataclass(slots=True)
+class Realm:
+    """A chiefdom: clans that follow the leader of one settled clan, the seat."""
+
+    id: int
+    name: str
+    founded: int
+    seat: int  # clan
+    ruler: int  # person
+    people: int  # the people of the seat when it was founded
+    ended: int | None = None
 
 
 @dataclass(slots=True)
@@ -139,6 +154,9 @@ class Society:
         self.dirty_clans: set[int] = set()
         self.dirty_places: set[int] = set()
         self.cultures: dict[int, Culture] = {}
+        self.realms: dict[int, Realm] = {}
+        self.next_realm = 1
+        self.dirty_realms: set[int] = set()
         self.next_culture = 1
         self.dirty_cultures: set[int] = set()
         self.new_discoveries: list[tuple[int, str, int, int, str]] = []
@@ -553,7 +571,8 @@ class Society:
         self.flow(clan, "food", 0, gathered)
         if clan.food < need:
             # Trading partners with more than they need this month help out.
-            for partner_id in sorted(clan.partners):
+            helpers = sorted(set(clan.partners) | set(self.realm_members(clan)))
+            for partner_id in helpers:
                 partner = self.clans.get(partner_id)
                 if partner is None:
                     continue
@@ -859,6 +878,8 @@ class Society:
         target.members.append(person.id)
         target.members.sort()
         person.clan = target.id
+        if source.leader == person.id:
+            source.leader = 0  # the clan chooses again at the turn of the year
         # A new clan gives new work, from next month on.
         person.activity, person.target_y, person.target_x = "", -1, -1
         self.dirty_persons.add(person.id)
@@ -906,6 +927,9 @@ class Society:
             self.unlink(clan, partner_id)
         self.retired[clan.id] = clan
         del self.clans[clan.id]
+        realm = self.realms.get(clan.realm)
+        if realm is not None and realm.ended is None and realm.seat == clan.id:
+            self.move_seat(realm)
         self._effects.pop(clan.id, None)
         if clan.culture in self.cultures:
             self.fade(self.cultures[clan.culture])
@@ -1044,6 +1068,233 @@ class Society:
         self.dirty_clans.add(clan.id)
         self.new_discoveries.append((clan.id, tech_id, self.world.tick, discoverer, how))
 
+    # ---- leaders and chiefdoms -------------------------------------------
+
+    def realm_members(self, clan: Clan) -> list[int]:
+        if not clan.realm:
+            return []
+        return [
+            other_id
+            for other_id in sorted(self.clans)
+            if other_id != clan.id and self.clans[other_id].realm == clan.realm
+        ]
+
+    def follow(self, clan: Clan, adults: list[Person]) -> None:
+        """A clan follows one of its adults: the one others listen to most.
+
+        No dice: whoever is sociable, strong and experienced. A leader keeps the
+        place until death, leaving or growing old.
+        """
+        current = self.persons.get(clan.leader)
+        if (
+            current is not None
+            and current.clan == clan.id
+            and self.age(current) < self.p.elder_age + 15
+        ):
+            return
+        if not adults:
+            return
+        chosen = max(
+            adults,
+            key=lambda a: (
+                2 * a.traits[2] + a.traits[0] + a.traits[3] + min(self.age(a), 45),
+                -a.id,
+            ),
+        )
+        before = clan.leader
+        clan.leader = chosen.id
+        self.dirty_clans.add(clan.id)
+        self.world.count("leaders.chosen")
+        realm = self.realms.get(clan.realm)
+        if realm is not None and realm.seat == clan.id:
+            realm.ruler = chosen.id
+            self.dirty_realms.add(realm.id)
+            self.world.emit(
+                "ruler_follows",
+                data={
+                    "realm": realm.name,
+                    "realm_id": realm.id,
+                    "ruler": chosen.name,
+                    "person": chosen.id,
+                },
+            )
+            if before:
+                self.succession(realm)
+
+    def succession(self, realm: Realm) -> None:
+        """A new ruler: clans that only followed the old one may go their own way."""
+        world, p = self.world, self.p
+        for clan_id in sorted(self.clans):
+            clan = self.clans[clan_id]
+            if clan.realm != realm.id or clan.id == realm.seat:
+                continue
+            factors = [] if clan.culture == realm.people else [("other_people", 2.0)]
+            if world.roll(
+                "realm_breaks_away", "group", clan.id, p.realm_break_on_succession, factors
+            ):
+                self.leave_realm(clan, realm, "succession")
+        seat = self.clans.get(realm.seat)
+        if seat is not None and not self.realm_members(seat):
+            self.end_realm(realm)  # nobody but the seat's own follows the new ruler
+
+    def leave_realm(self, clan: Clan, realm: Realm, why: str) -> None:
+        clan.realm = 0
+        self.dirty_clans.add(clan.id)
+        self.world.count("realms.left")
+        self.world.emit(
+            "realm_left",
+            data={
+                "clan": clan.name,
+                "clan_id": clan.id,
+                "realm": realm.name,
+                "realm_id": realm.id,
+                "why": why,
+            },
+        )
+
+    def end_realm(self, realm: Realm) -> None:
+        realm.ended = self.world.tick
+        self.dirty_realms.add(realm.id)
+        for clan in self.clans.values():
+            if clan.realm == realm.id:
+                clan.realm = 0
+                self.dirty_clans.add(clan.id)
+        self.world.count("realms.fallen")
+        self.world.emit("realm_fell", data={"realm": realm.name, "realm_id": realm.id})
+
+    def rule(self, clan: Clan, adults: list[Person]) -> None:
+        """Chiefdoms form, grow, and hold or lose their clans."""
+        world, p = self.world, self.p
+        realm = self.realms.get(clan.realm)
+        if realm is not None and realm.ended is None:
+            seat = self.clans.get(realm.seat)
+            if seat is None:
+                return
+            if clan.id != seat.id:
+                if max(abs(clan.y - seat.y), abs(clan.x - seat.x)) > p.realm_reach * 3 // 2:
+                    self.leave_realm(clan, realm, "too_far")
+                return
+            self.reach_out(clan, realm, adults)
+            return
+        if clan.realm:  # a realm that has ended
+            clan.realm = 0
+            self.dirty_clans.add(clan.id)
+        leader = self.persons.get(clan.leader)
+        if not clan.settled or leader is None or len(adults) < p.realm_min_adults:
+            return
+        free = [
+            other
+            for other in self.clans.values()
+            if other.id != clan.id
+            and not other.realm
+            and max(abs(other.y - clan.y), abs(other.x - clan.x)) <= p.contact_radius
+        ]
+        if len(free) < 2:
+            return
+        factors = []
+        if leader.traits[2] >= 60:
+            factors.append(("persuasive_leader", 2.0))
+        standing = sum(1 for b in self.places[clan.place]["buildings"] if b["state"] == "standing")
+        if standing >= 4:
+            factors.append(("built_up", 1.5))
+        if sum(1 for other in free if other.culture == clan.culture) >= 2:
+            factors.append(("kin_around", 1.5))
+        if not world.roll(
+            "realm_founded", "group", clan.id, p.realm_found_chance_per_year, factors
+        ):
+            return
+        realm = Realm(
+            id=self.next_realm,
+            name=self.places[clan.place]["name"],
+            founded=world.tick,
+            seat=clan.id,
+            ruler=leader.id,
+            people=clan.culture,
+        )
+        self.next_realm += 1
+        self.realms[realm.id] = realm
+        self.dirty_realms.add(realm.id)
+        clan.realm = realm.id
+        self.dirty_clans.add(clan.id)
+        world.count("realms.founded")
+        world.emit(
+            "realm_founded",
+            data={
+                "realm": realm.name,
+                "realm_id": realm.id,
+                "ruler": leader.name,
+                "person": leader.id,
+                "clan": clan.name,
+                "clan_id": clan.id,
+            },
+        )
+
+    def reach_out(self, seat: Clan, realm: Realm, adults: list[Person]) -> None:
+        """The seat draws clans around it under its rule, one at a time."""
+        world, p = self.world, self.p
+        members = 1 + len(self.realm_members(seat))
+        if members >= p.realm_max_clans:
+            return
+        ruler = self.persons.get(realm.ruler)
+        candidates = sorted(
+            (max(abs(other.y - seat.y), abs(other.x - seat.x)), other.id)
+            for other in self.clans.values()
+            if not other.realm and other.id != seat.id
+        )
+        for distance, other_id in candidates:
+            if distance > p.realm_reach:
+                break
+            other = self.clans[other_id]
+            factors = []
+            if other.culture == seat.culture:
+                factors.append(("same_people", 2.0))
+            else:
+                factors.append(("other_people", 0.4))
+            if len(other.members) * 2 < len(seat.members):
+                factors.append(("smaller", 1.5))
+            if ruler is not None and ruler.traits[2] >= 60:
+                factors.append(("persuasive_ruler", 1.5))
+            if other.unmet and other.unmet[-1] >= 20:
+                factors.append(("hungry", 1.5))  # the seat's stores are a pull
+            if not world.roll(
+                "realm_joined", "group", other.id, p.realm_join_chance_per_year, factors
+            ):
+                continue
+            other.realm = realm.id
+            self.dirty_clans.add(other.id)
+            world.count("realms.joined")
+            world.emit(
+                "realm_joined",
+                data={
+                    "clan": other.name,
+                    "clan_id": other.id,
+                    "realm": realm.name,
+                    "realm_id": realm.id,
+                },
+            )
+            return  # one a year
+
+    def move_seat(self, realm: Realm) -> None:
+        """The seat is gone: the largest settled clan of the realm takes over, or it falls."""
+        heirs = sorted(
+            (
+                clan
+                for clan in self.clans.values()
+                if clan.realm == realm.id and clan.settled and clan.leader in self.persons
+            ),
+            key=lambda clan: (-len(clan.members), clan.id),
+        )
+        if not heirs:
+            self.end_realm(realm)
+            return
+        heir = heirs[0]
+        realm.seat, realm.ruler = heir.id, heir.leader
+        self.dirty_realms.add(realm.id)
+        self.world.emit(
+            "realm_new_seat",
+            data={"realm": realm.name, "realm_id": realm.id, "clan": heir.name, "clan_id": heir.id},
+        )
+
     def kinship(self, clan: Clan) -> None:
         """Peoples form and fade: a clan grown strange to its people founds its
         own, and a clan alone among strangers may become one of them."""
@@ -1081,6 +1332,8 @@ class Society:
             factors = [("no_kin_near", 3.0)] if not kin else []
             if outlying:
                 factors.append(("people_too_large", 1.0 + 4.0 * len(members) / p.people_max_clans))
+            if clan.realm:
+                factors.append(("bound_by_realm", 0.2))
             if clan.settled:
                 factors.append(("settled", 1.5))
             if world.roll(
@@ -1258,6 +1511,8 @@ class Society:
         if not adults:
             return
         self.year_of_goods(clan)
+        self.follow(clan, adults)
+        self.rule(clan, adults)
 
         for tech_id in sorted(packs.technologies):
             if tech_id in clan.techs:
@@ -1308,6 +1563,8 @@ class Society:
                     if other.id in clan.partners
                     else []
                 )
+                if clan.realm and other.realm == clan.realm:
+                    taught.append(("same_realm", p.trade_learning_factor))
                 if world.roll(
                     f"learn.{tech_id}",
                     "group",
@@ -1689,6 +1946,8 @@ class Society:
             clan.members.remove(person_id)
             new.members.append(person_id)
             person.clan = new.id
+            if clan.leader == person_id:
+                clan.leader = 0  # the clan chooses again at the turn of the year
             if person.partner and self.persons[person.partner].family not in leaving:
                 self.persons[person.partner].partner = 0
                 self.dirty_persons.add(person.partner)
@@ -1866,6 +2125,17 @@ class Society:
         for (culture_id, good), amount in sorted(kept.items()):
             scope = "world" if culture_id == 0 else "culture"
             rows.append((tick, f"stores.{good}", scope, culture_id, float(amount)))
+        living_realms = {clan.realm for clan in self.clans.values() if clan.realm}
+        rows.append((tick, "realms.count", "world", 0, float(len(living_realms))))
+        rows.append(
+            (
+                tick,
+                "realms.clans",
+                "world",
+                0,
+                float(sum(1 for c in self.clans.values() if c.realm)),
+            )
+        )
         links = sum(len(clan.partners) for clan in self.clans.values()) // 2
         rows.append((tick, "trade.partnerships", "world", 0, float(links)))
         held = np.bincount(self.land_people.ravel(), minlength=self.next_culture + 1)
@@ -1908,6 +2178,7 @@ class Society:
         self.dirty_clans.clear()
         self.dirty_places.clear()
         self.dirty_cultures.clear()
+        self.dirty_realms.clear()
         self.new_discoveries.clear()
         self.forgotten.clear()
         self.new_links.clear()
@@ -1924,6 +2195,19 @@ class Society:
             "next_place": self.next_place,
             "next_building": self.next_building,
             "next_culture": self.next_culture,
+            "next_realm": self.next_realm,
+            "realms": [
+                {
+                    "id": r.id,
+                    "name": r.name,
+                    "founded": r.founded,
+                    "seat": r.seat,
+                    "ruler": r.ruler,
+                    "people": r.people,
+                    "ended": r.ended,
+                }
+                for r in (self.realms[rid] for rid in sorted(self.realms))
+            ],
             "extinct": self.extinct,
             "cultures": [
                 {
@@ -1949,6 +2233,8 @@ class Society:
                     "month": c.month,
                     "language": c.language,
                     "culture": c.culture,
+                    "leader": c.leader,
+                    "realm": c.realm,
                     "partners": {str(k): c.partners[k] for k in sorted(c.partners)},
                     "stores": dict(sorted(c.stores.items())),
                     "flows": dict(sorted(c.flows.items())),
@@ -1991,6 +2277,8 @@ class Society:
                 month=raw["month"],
                 language=dict(raw["language"]),
                 culture=raw.get("culture", 0),
+                leader=raw.get("leader", 0),
+                realm=raw.get("realm", 0),
                 partners={int(k): v for k, v in raw.get("partners", {}).items()},
                 stores=dict(raw.get("stores", {})),
                 flows={k: list(v) for k, v in raw.get("flows", {}).items()},
@@ -2003,6 +2291,8 @@ class Society:
                 place=raw["place"],
                 famine=raw["famine"],
             )
+        self.next_realm = state.get("next_realm", 1)
+        self.realms = {raw["id"]: Realm(**raw) for raw in state.get("realms", [])}
         self.next_culture = state.get("next_culture", 1)
         self.cultures = {
             raw["id"]: Culture(

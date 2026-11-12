@@ -158,3 +158,33 @@ trade_begun:
   text:
     de: "Die {clan} und die {partner} beginnen zu tauschen."
     en: "The {clan} and the {partner} begin to trade."
+realm_founded:
+  importance: 4
+  text:
+    de: "{ruler} von den {clan} sammelt die Clans der Umgebung. Das Häuptlingstum {realm} entsteht."
+    en: "{ruler} of the {clan} gathers the clans around. The chiefdom of {realm} is born."
+realm_joined:
+  importance: 3
+  text:
+    de: "Die {clan} folgen nun dem Häuptlingstum {realm}."
+    en: "The {clan} now follow the chiefdom of {realm}."
+realm_left:
+  importance: 3
+  text:
+    de: "Die {clan} sagen sich vom Häuptlingstum {realm} los."
+    en: "The {clan} break away from the chiefdom of {realm}."
+ruler_follows:
+  importance: 3
+  text:
+    de: "In {realm} herrscht nun {ruler}."
+    en: "{ruler} now rules {realm}."
+realm_new_seat:
+  importance: 3
+  text:
+    de: "Der Sitz von {realm} geht an die {clan}."
+    en: "The seat of {realm} passes to the {clan}."
+realm_fell:
+  importance: 4
+  text:
+    de: "Das Häuptlingstum {realm} zerfällt. Niemand folgt ihm mehr."
+    en: "The chiefdom of {realm} falls apart. Nobody follows it any more."
