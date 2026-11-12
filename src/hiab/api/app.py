@@ -755,6 +755,86 @@ def create_app(
             )
         ]
 
+    @api.get("/worlds/{world_id}/persons/{person_id}/tree")
+    def family_tree(
+        world_id: int,
+        person_id: int,
+        conn: Db,
+        up: Annotated[int, Query(ge=0, le=6)] = 3,
+        down: Annotated[int, Query(ge=0, le=6)] = 3,
+    ) -> dict[str, Any]:
+        """A person with ancestors and descendants, generation by generation.
+
+        Each entry carries its parents, so the tree can be drawn with lines.
+        Descendants are cut off at 60 per generation to keep the answer small.
+        """
+        tick = world_row(conn, world_id)["tick"]
+
+        def load(ids: list[int]) -> list[sqlite3.Row]:
+            if not ids:
+                return []
+            marks = ",".join("?" * len(ids))
+            return _rows(
+                conn,
+                f"SELECT id, name, sex, born, died, mother, father, partner, clan "
+                f"FROM persons WHERE world_id = ? AND id IN ({marks}) ORDER BY born, id",
+                (world_id, *ids),
+            )
+
+        def out(row: sqlite3.Row) -> dict[str, Any]:
+            end = tick if row["died"] is None else row["died"]
+            return {
+                "id": row["id"],
+                "name": row["name"],
+                "sex": "f" if row["sex"] == 0 else "m",
+                "born_year": row["born"] // 360,
+                "died_year": None if row["died"] is None else row["died"] // 360,
+                "age": max(0, (end - row["born"]) // 360),
+                "mother": row["mother"],
+                "father": row["father"],
+                "partner": row["partner"],
+                "clan": row["clan"],
+            }
+
+        centre = load([person_id])
+        if not centre:
+            raise HTTPException(404, f"No person {person_id} in world {world_id}.")
+        partner = load([centre[0]["partner"]]) if centre[0]["partner"] else []
+
+        ancestors: list[list[dict[str, Any]]] = []
+        current = [centre[0]]
+        for _ in range(up):
+            parents = sorted(
+                {parent for row in current for parent in (row["mother"], row["father"]) if parent}
+            )
+            current = load(parents)
+            if not current:
+                break
+            ancestors.append([out(row) for row in current])
+
+        descendants: list[list[dict[str, Any]]] = []
+        parents_ids = [person_id]
+        for _ in range(down):
+            marks = ",".join("?" * len(parents_ids))
+            rows = _rows(
+                conn,
+                f"SELECT id, name, sex, born, died, mother, father, partner, clan "
+                f"FROM persons WHERE world_id = ? AND (mother IN ({marks}) OR father IN ({marks})) "
+                f"ORDER BY born, id LIMIT 60",
+                (world_id, *parents_ids, *parents_ids),
+            )
+            if not rows:
+                break
+            descendants.append([out(row) for row in rows])
+            parents_ids = [row["id"] for row in rows]
+
+        return {
+            "person": out(centre[0]),
+            "partner": out(partner[0]) if partner else None,
+            "ancestors": ancestors,
+            "descendants": descendants,
+        }
+
     @api.get("/worlds/{world_id}/persons/{person_id}")
     def person(
         world_id: int, person_id: int, conn: Db, lang: Lang = default_language

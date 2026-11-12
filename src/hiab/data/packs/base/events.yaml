@@ -46,8 +46,8 @@ climate_normalises:
 humankind_begins:
   importance: 5
   text:
-    de: "Die ersten Familien lagern gemeinsam. Sie nennen sich {clan}."
-    en: "The first families camp together. They call themselves {clan}."
+    de: "Die ersten Familien lagern gemeinsam. Sie nennen sich {clan}, ihr Volk die {people}."
+    en: "The first families camp together. They call themselves {clan}, their people the {people}."
 humankind_extinct:
   importance: 5
   text:

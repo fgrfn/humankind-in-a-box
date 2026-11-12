@@ -18,12 +18,22 @@ def test_world_starts_with_the_first_families() -> None:
     world = World.create(1, 12, packs, 48, 48, 45)
     society = world.society
     assert society is not None and packs.life is not None
-    assert len(society.clans) == 1
-    clan = next(iter(society.clans.values()))
-    adults = society.adults(clan)
-    assert len(adults) == 2 * packs.life.start_families
-    assert all(adult.partner for adult in adults)
-    assert society.campable[clan.y, clan.x]
+    assert len(society.clans) == packs.life.start_peoples
+    # Every starting people is a clan of its own, with a speech of its own.
+    assert len(society.cultures) == packs.life.start_peoples
+    assert len({clan.culture for clan in society.clans.values()}) == packs.life.start_peoples
+    assert len({clan.language["c"] for clan in society.clans.values()}) == packs.life.start_peoples
+    for clan in society.clans.values():
+        adults = society.adults(clan)
+        assert len(adults) == 2 * packs.life.start_families
+        assert all(adult.partner for adult in adults)
+        assert society.campable[clan.y, clan.x]
+    # They begin apart from each other.
+    camps = [(clan.y, clan.x) for clan in society.clans.values()]
+    closest = min(
+        max(abs(a[0] - b[0]), abs(a[1] - b[1])) for i, a in enumerate(camps) for b in camps[i + 1 :]
+    )
+    assert closest >= 6
 
 
 def test_pack_without_life_has_no_people(tmp_path: Path) -> None:

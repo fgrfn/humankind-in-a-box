@@ -139,7 +139,9 @@ class Building(_Model):
 
 
 class LifeParams(_Model):
-    start_families: int = Field(ge=1, le=200)
+    start_families: int = Field(ge=1, le=200)  # per starting people
+    # How many peoples the world begins with, far apart, each with its own speech.
+    start_peoples: int = Field(1, ge=1, le=12)
     adult_age: int = Field(ge=10, le=30)
     elder_age: int = Field(ge=30, le=90)
     max_fertile_age: int = Field(ge=20, le=60)

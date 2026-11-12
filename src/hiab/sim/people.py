@@ -355,7 +355,7 @@ class Society:
         return clan
 
     def found(self) -> None:
-        """Place the first families on a good spot."""
+        """Place the first peoples, each on a good spot far from the others."""
         world = self.world
         potential = np.zeros((world.map.height, world.map.width), dtype=np.int64)
         for rid in self.food_ids:
@@ -369,12 +369,44 @@ class Society:
         mild = (world.map.temperature >= 80) & (world.map.temperature <= 230)
         score = np.where(self.campable, score, -1)
         score = np.where(mild, score, score // 3)
-        order = np.argsort(-score, axis=None, kind="stable")[:20]
-        pick = int(order[world.draw_int("start_site", 0, len(order) - 1)])
-        y, x = divmod(pick, world.map.width)
+        order = np.argsort(-score, axis=None, kind="stable")
+        positive = int((score > 0).sum())
+        # The best quarter of the habitable land: room enough to spread out.
+        good = order[: max(20, positive // 4)]
+        good = good[score.ravel()[good] > 0]
+        # Each people begins on one of the best spots that lies far from the
+        # others. Where there is not enough room, they may begin closer.
+        sites: list[tuple[int, int]] = []
+        apart = max(world.map.width, world.map.height) // 3
+        for number in range(self.p.start_peoples):
+            while True:
+                free = [
+                    int(index)
+                    for index in good
+                    if all(
+                        max(
+                            abs(int(index) // world.map.width - y),
+                            abs(int(index) % world.map.width - x),
+                        )
+                        >= apart
+                        for y, x in sites
+                    )
+                ][:20]
+                if free or apart <= 2:
+                    break
+                apart = apart * 2 // 3
+            if not free:
+                break
+            pick = free[world.draw_int(f"start_site.{number}", 0, len(free) - 1)]
+            sites.append(divmod(pick, world.map.width))
+        for y, x in sites:
+            self.found_people(y, x)
 
+    def found_people(self, y: int, x: int) -> None:
+        """One starting people: a few families with a speech of their own."""
+        world = self.world
         clan = self.add_clan(y, x, 0, self.new_language())
-        self.add_culture(clan, 0)
+        culture = self.add_culture(clan, 0)
         for _ in range(self.p.start_families):
             family = self.next_family
             self.next_family += 1
@@ -388,7 +420,17 @@ class Society:
                 self.birth(
                     couple[0], couple[1], clan, -self.quiet(0, 8 * DAYS_PER_YEAR), quiet=True
                 )
-        world.emit("humankind_begins", data={"clan": clan.name, "clan_id": clan.id, "y": y, "x": x})
+        world.emit(
+            "humankind_begins",
+            data={
+                "clan": clan.name,
+                "clan_id": clan.id,
+                "people": culture.name,
+                "people_id": culture.id,
+                "y": y,
+                "x": x,
+            },
+        )
 
     def birth(
         self, mother: Person, father: Person, clan: Clan, born: int, quiet: bool = False
@@ -808,6 +850,8 @@ class Society:
         target.members.append(person.id)
         target.members.sort()
         person.clan = target.id
+        # A new clan gives new work, from next month on.
+        person.activity, person.target_y, person.target_x = "", -1, -1
         self.dirty_persons.add(person.id)
         if not source.members:
             self.dissolve(source, "clan_died_out", {})
@@ -1739,6 +1783,12 @@ class Society:
             },
         )
         clan.y, clan.x, clan.arrived = y, x, world.tick
+        # Work was given out for the old camp; at the new one it is given out next month.
+        for person_id in clan.members:
+            person = self.persons[person_id]
+            if person.activity:
+                person.activity, person.target_y, person.target_x = "", -1, -1
+                self.dirty_persons.add(person_id)
         self.dirty_clans.add(clan.id)
 
     # ---- statistics and state ---------------------------------------------

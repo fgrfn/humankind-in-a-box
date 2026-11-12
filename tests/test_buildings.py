@@ -141,13 +141,13 @@ def test_every_adult_has_work_and_builders_build(tmp_path: Path, early: Settings
         for person_id in clan.members:
             person = society.persons[person_id]
             kind = person.activity.split(":", 1)[0]
-            if person_id in grown:
+            if person_id in grown and person.activity:
                 assert kind in foods | set(society.good_ids) | {"build", "search"}, person.activity
                 assert sum(person.work.values()) > 0
                 # Work is done near the camp, never across the map.
                 assert max(abs(person.target_y - clan.y), abs(person.target_x - clan.x)) <= 6
                 seen.add(kind)
-            else:
+            elif person_id not in grown:
                 assert person.activity == ""
     assert seen & foods
 

@@ -17,7 +17,10 @@
 - Lager: Jeder Clan hält neben Nahrung auch Güter (Holz, Feuerstein, Lehm, Salz, Erze; was lagerbar ist, steht im Datenpaket). Ist niemand hungrig, holt ein Teil der Erwachsenen, was am meisten fehlt, solange Platz ist. Platz richtet sich nach der Zahl der Erwachsenen und nach Lagergebäuden. Gebaut wird aus dem Lager, nicht mehr direkt aus dem Land. Handwerk verbraucht jährlich etwas, und Tauschpartner geben ab, wovon sie reichlich haben. Je Clan wird gebucht, was im Jahr dazukam, verbraucht, erhalten und abgegeben wurde; je Volk und Welt gibt es Summen und Verläufe (`stores.*`).
 - Zeitregler: Anhalten, 1×, 5×, 25×, so schnell wie möglich und „10 Jahre vor“ (danach zurück auf normal). Die API schreibt den Wunsch in `control.json` im Datenordner, der Worker liest ihn zweimal pro Sekunde und meldet in `pace.json`, wie schnell er wirklich ist. Die Datenbank bleibt dabei unberührt. Mit gesetztem API-Token wird er dafür verlangt.
 - Karte: Ein Tipp auf ein Lager oder einen Menschen öffnet ein Feld neben der Karte (Handy: unten), die Karte bleibt sichtbar. Während eine andere Ansicht offen ist, hält die Karte an und behält ihre Größe; vorher konnte der Wechsel zurück zur Karte die Seite einfrieren lassen.
-- Offen aus den Wünschen des Besitzers: mehrere Startvölker, Stammbaumansicht, später eine größere Karte.
+- Startvölker: Eine Welt beginnt mit mehreren Völkern (`start_peoples`, Vorgabe 4) an weit auseinanderliegenden guten Orten, jedes mit eigener Sprache und `start_families` Familien.
+- Stammbaum: Vorfahren bis drei Generationen hinauf, Nachkommen bis drei hinunter (`/persons/{id}/tree`), aus der Personenkarte erreichbar; jede Person darin ist antippbar.
+- Volksfarben: Die ersten zwölf Völker haben feste, gut unterscheidbare Farben, weitere werden über den goldenen Schnitt verteilt.
+- Offen aus den Wünschen des Besitzers: später eine größere Karte.
 - Früher geplant: Handel und „Während du weg warst“. Bräuche und Glaube eines Volkes folgen mit Stufe 2b. Der Entdeckungsgraph endet vorerst beim Eisen; spätere Zeitalter kommen mit Stufe 2b, weil sie Staaten und Handel brauchen.
 - Noch offen: Lizenz-Entscheidung, Prüfung von PyPI-Name und Domain, Bogen für Tiere.
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, NeedsToken, type Speed, type Discovery, type Group, type Human, type Lang, type People, type Since, type TradeLink, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
+import { api, NeedsToken, type Speed, type FamilyTree, type TreePerson, type Discovery, type Group, type Human, type Lang, type People, type Since, type TradeLink, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
 import { Chart, SERIES_COLOURS, type Point } from "./Chart";
 import { HistoryBand, type Mark } from "./HistoryBand";
 import { formatNumber, translator, type TextKey } from "./i18n";
@@ -319,7 +319,184 @@ function TimeControl({ lang, t }: { lang: Lang; t: Translate }) {
   );
 }
 
-function PersonCard({ person, t, onPerson }: { person: PersonDetail; t: Translate; onPerson: (id: number) => void }) {
+// ---- Family tree --------------------------------------------------------
+// Drawn as a tree: ancestors branch upwards, two parents above each person;
+// descendants branch downwards under their parents. Elbow lines join them.
+
+const NODE_W = 132;
+const NODE_H = 48;
+const GAP_X = 14;
+const GAP_Y = 46;
+
+interface Placed {
+  person: TreePerson;
+  x: number; // centre
+  y: number; // top
+}
+
+function layoutTree(tree: FamilyTree) {
+  const nodes: Placed[] = [];
+  const lines: string[] = [];
+  const unit = NODE_W + GAP_X;
+  const rowY = (generation: number) => generation * (NODE_H + GAP_Y);
+
+  // Descendants: every child hangs under the first of its parents found one generation up.
+  const childrenOf = new Map<number, TreePerson[]>();
+  let parents = [tree.person];
+  for (const generation of tree.descendants) {
+    const ids = new Set(parents.map((person) => person.id));
+    for (const child of generation) {
+      const parent = ids.has(child.mother) ? child.mother : child.father;
+      const list = childrenOf.get(parent) ?? [];
+      list.push(child);
+      childrenOf.set(parent, list);
+    }
+    parents = generation;
+  }
+  const below = new Map<number, number>();
+  const widthBelow = (person: TreePerson): number => {
+    const kids = childrenOf.get(person.id) ?? [];
+    const width = Math.max(1, kids.reduce((sum, kid) => sum + widthBelow(kid), 0));
+    below.set(person.id, width);
+    return width;
+  };
+
+  // Ancestors: everybody's parents, looked up by id.
+  const byId = new Map<number, TreePerson>();
+  for (const person of tree.ancestors.flat()) byId.set(person.id, person);
+  const parentsOf = (person: TreePerson) => [byId.get(person.mother), byId.get(person.father)].filter((p): p is TreePerson => p !== undefined);
+  const above = new Map<number, number>();
+  const widthAbove = (person: TreePerson): number => {
+    const width = Math.max(1, parentsOf(person).reduce((sum, parent) => sum + widthAbove(parent), 0));
+    above.set(person.id, width);
+    return width;
+  };
+
+  const top = tree.ancestors.length;
+  // The person and partner side by side; the person's tree hangs below the person.
+  const rootWidth = Math.max(widthBelow(tree.person), widthAbove(tree.person), tree.partner ? 2 : 1);
+  const rootX = (rootWidth * unit) / 2;
+
+  const placeDown = (person: TreePerson, left: number, generation: number) => {
+    const width = below.get(person.id) ?? 1;
+    const x = left + (width * unit) / 2;
+    if (generation > 0) nodes.push({ person, x, y: rowY(top + generation) });
+    const kids = childrenOf.get(person.id) ?? [];
+    let cursor = left;
+    const kidXs: number[] = [];
+    for (const kid of kids) {
+      kidXs.push(cursor + ((below.get(kid.id) ?? 1) * unit) / 2);
+      placeDown(kid, cursor, generation + 1);
+      cursor += (below.get(kid.id) ?? 1) * unit;
+    }
+    if (kids.length) {
+      const fromY = rowY(top + generation) + NODE_H;
+      const midY = fromY + GAP_Y / 2;
+      const toY = rowY(top + generation + 1);
+      lines.push(`M${x},${fromY}V${midY}`);
+      lines.push(`M${Math.min(x, ...kidXs)},${midY}H${Math.max(x, ...kidXs)}`);
+      for (const kidX of kidXs) lines.push(`M${kidX},${midY}V${toY}`);
+    }
+  };
+  const placeUp = (person: TreePerson, centre: number, generation: number) => {
+    const parentsHere = parentsOf(person);
+    if (!parentsHere.length) return;
+    const total = parentsHere.reduce((sum, parent) => sum + (above.get(parent.id) ?? 1), 0);
+    let cursor = centre - (total * unit) / 2;
+    const parentXs: number[] = [];
+    for (const parent of parentsHere) {
+      const width = above.get(parent.id) ?? 1;
+      const x = cursor + (width * unit) / 2;
+      parentXs.push(x);
+      nodes.push({ person: parent, x, y: rowY(top - generation - 1) });
+      placeUp(parent, x, generation + 1);
+      cursor += width * unit;
+    }
+    const toY = rowY(top - generation);
+    const midY = toY - GAP_Y / 2;
+    lines.push(`M${centre},${toY}V${midY}`);
+    lines.push(`M${Math.min(centre, ...parentXs)},${midY}H${Math.max(centre, ...parentXs)}`);
+    for (const parentX of parentXs) lines.push(`M${parentX},${midY}V${midY - GAP_Y / 2}`);
+  };
+
+  const rootLeft = rootX - ((below.get(tree.person.id) ?? 1) * unit) / 2;
+  placeDown(tree.person, rootLeft, 0);
+  placeUp(tree.person, rootX, 0);
+  nodes.push({ person: tree.person, x: rootX, y: rowY(top) });
+  const couples: string[] = [];
+  if (tree.partner) {
+    const partnerX = rootX + unit;
+    nodes.push({ person: tree.partner, x: partnerX, y: rowY(top) });
+    couples.push(`M${rootX + NODE_W / 2},${rowY(top) + NODE_H / 2}H${partnerX - NODE_W / 2}`);
+  }
+  const minX = Math.min(...nodes.map((node) => node.x)) - NODE_W / 2 - GAP_X;
+  const maxX = Math.max(...nodes.map((node) => node.x)) + NODE_W / 2 + GAP_X;
+  const height = rowY(top + tree.descendants.length) + NODE_H + 8;
+  return { nodes, lines, couples, minX, width: maxX - minX, height, rootX, rootY: rowY(top) };
+}
+
+function TreeView({ tree, t, onPick }: { tree: FamilyTree; t: Translate; onPick: (id: number) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const layout = useMemo(() => layoutTree(tree), [tree]);
+  const shift = -layout.minX;
+  useEffect(() => {
+    // Open with the chosen person in the middle.
+    const element = box.current;
+    if (!element) return;
+    element.scrollLeft = layout.rootX + shift - element.clientWidth / 2;
+    element.scrollTop = Math.max(0, layout.rootY - element.clientHeight / 2 + NODE_H);
+  }, [layout, shift]);
+  const generationName = (offset: number) => {
+    if (offset === 0) return "";
+    const n = Math.abs(offset);
+    if (offset < 0) return n <= 3 ? t(`generationUp${n}` as "generationUp1") : `${t("generationAbove")} ${n}`;
+    return n <= 3 ? t(`generationDown${n}` as "generationDown1") : `${t("generationBelow")} ${n}`;
+  };
+  return (
+    <>
+      {tree.ancestors.length === 0 ? <p className="note">{t("noAncestors")}</p> : null}
+      <div className="tree-scroll" ref={box}>
+        <svg className="tree-svg" width={layout.width} height={layout.height} viewBox={`${layout.minX} 0 ${layout.width} ${layout.height}`} role="img" aria-label={`${t("familyTree")}: ${tree.person.name}`}>
+          {Array.from({ length: tree.ancestors.length + tree.descendants.length + 1 }, (_, row) => (
+            <text key={row} className="tree-gen" x={layout.minX + 4} y={row * (NODE_H + GAP_Y) - 6}>
+              {generationName(row - tree.ancestors.length)}
+            </text>
+          ))}
+          <path className="tree-line" d={layout.lines.join("")} />
+          <path className="tree-couple" d={layout.couples.join("")} />
+          {layout.nodes.map(({ person, x, y }) => {
+            const centre = person.id === tree.person.id;
+            return (
+              <g
+                key={`${person.id}-${x}`}
+                className={`tree-node ${person.sex} ${centre ? "centre" : ""} ${person.died_year === null ? "" : "dead"}`}
+                transform={`translate(${x - NODE_W / 2},${y})`}
+                role="button"
+                tabIndex={0}
+                onClick={() => onPick(person.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") onPick(person.id);
+                }}
+              >
+                <rect width={NODE_W} height={NODE_H} rx={6} />
+                <rect className="sex" width={4} height={NODE_H} rx={2} />
+                <text x={12} y={20} className="name">
+                  {person.name}
+                </text>
+                <text x={12} y={38} className="years">
+                  {person.born_year}–{person.died_year ?? ""} {person.died_year === null ? `(${t("alive")}, ${person.age})` : `(${person.age})`}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      <p className="note">{t("treeNote")}</p>
+    </>
+  );
+}
+
+function PersonCard({ person, t, onPerson, onTree }: { person: PersonDetail; t: Translate; onPerson: (id: number) => void; onTree: (id: number) => void }) {
   return (
     <>
       <h2>{person.name}</h2>
@@ -368,6 +545,9 @@ function PersonCard({ person, t, onPerson }: { person: PersonDetail; t: Translat
           , {person.tiles_moved} {t("walked")}
         </dd>
       </dl>
+      <button className="plain link" onClick={() => onTree(person.id)}>
+        {t("familyTree")}
+      </button>
     </>
   );
 }
@@ -589,6 +769,15 @@ export function App() {
     [worldId, lang],
   );
 
+  const [tree, setTree] = useState<FamilyTree | null>(null);
+  const showTree = useCallback(
+    (id: number) => {
+      if (worldId === null) return;
+      void api.tree(worldId, id).then(setTree);
+    },
+    [worldId],
+  );
+
   const showPerson = useCallback(
     (id: number) => {
       if (worldId === null) return;
@@ -728,7 +917,7 @@ export function App() {
               </button>
               {person ? (
                 <>
-                  <PersonCard person={person} t={t} onPerson={showPerson} />
+                  <PersonCard person={person} t={t} onPerson={showPerson} onTree={showTree} />
                   <button
                     className="plain link"
                     onClick={() => {
@@ -845,10 +1034,35 @@ export function App() {
       {person && view !== "map" ? (
         <div className="overlay" onClick={() => setPerson(null)}>
           <div className="dialog" role="dialog" aria-modal="true" aria-label={person.name} onClick={(event) => event.stopPropagation()}>
-            <PersonCard person={person} t={t} onPerson={showPerson} />
+            <PersonCard person={person} t={t} onPerson={showPerson} onTree={showTree} />
             <button className="solid" onClick={() => setPerson(null)}>
               {t("close")}
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {tree ? (
+        <div className="overlay" onClick={() => setTree(null)}>
+          <div className="dialog wide" role="dialog" aria-modal="true" aria-label={`${t("familyTree")}: ${tree.person.name}`} onClick={(event) => event.stopPropagation()}>
+            <h2>
+              {t("familyTree")}: {tree.person.name}
+            </h2>
+            <TreeView tree={tree} t={t} onPick={showTree} />
+            <div className="dialog-actions">
+              <button
+                className="solid"
+                onClick={() => {
+                  showPerson(tree.person.id);
+                  setTree(null);
+                }}
+              >
+                {tree.person.name}
+              </button>
+              <button className="solid" onClick={() => setTree(null)}>
+                {t("close")}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

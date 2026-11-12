@@ -119,6 +119,26 @@ export interface Store {
   traded_out: number;
 }
 
+export interface TreePerson {
+  id: number;
+  name: string;
+  sex: "f" | "m";
+  born_year: number;
+  died_year: number | null;
+  age: number;
+  mother: number;
+  father: number;
+  partner: number;
+  clan: number;
+}
+
+export interface FamilyTree {
+  person: TreePerson;
+  partner: TreePerson | null;
+  ancestors: TreePerson[][];
+  descendants: TreePerson[][];
+}
+
 export interface TradeLink {
   a: number;
   b: number;
@@ -261,6 +281,9 @@ export const api = {
   territory: (world: number) => get<{ clans: number[]; peoples: number[] }>(`/worlds/${world}/territory`),
   peoples: (world: number) => get<People[]>(`/worlds/${world}/peoples`),
   people: (world: number, lang: Lang) => get<Human[]>(`/worlds/${world}/people?lang=${lang}`),
+  // Two generations each way: a pedigree doubles with every generation, and on a
+  // phone more than that no longer fits around the person. Tapping walks on.
+  tree: (world: number, id: number) => get<FamilyTree>(`/worlds/${world}/persons/${id}/tree?up=2&down=2`),
   person: (world: number, id: number, lang: Lang) => get<PersonDetail>(`/worlds/${world}/persons/${id}?lang=${lang}`),
   places: (world: number, lang: Lang) => get<Place[]>(`/worlds/${world}/places?lang=${lang}`),
   groups: (world: number, lang: Lang) => get<Group[]>(`/worlds/${world}/groups?lang=${lang}`),
