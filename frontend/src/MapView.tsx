@@ -60,6 +60,8 @@ const BUILDING_SPRITES: Record<string, string> = {
   drying_rack: "drying_rack",
   storage_pit: "storage_pit",
   kiln: "kiln",
+  granary: "hut",
+  well: "storage_pit",
 };
 
 // A fixed number per tile, so the same world always looks the same.
@@ -340,6 +342,7 @@ interface Scene {
   world: Container;
   terrain: Container;
   paths: Container;
+  fields: Container;
   nature: Container;
   buildings: Container;
   people: Container;
@@ -394,14 +397,15 @@ export function MapView({ map, steps, groups, places, people, selected, focus, o
         const world = new Container();
         const terrain = new Container();
         const paths = new Container();
+        const fields = new Container();
         const nature = new Container();
         const buildings = new Container();
         const people = new Container();
         people.sortableChildren = true;
         const camps = new Container();
-        world.addChild(terrain, paths, nature, buildings, people, camps);
+        world.addChild(terrain, fields, paths, nature, buildings, people, camps);
         app.stage.addChild(world);
-        scene.current = { app, world, terrain, paths, nature, buildings, people, camps, sheet, natureAt: new Map() };
+        scene.current = { app, world, terrain, paths, fields, nature, buildings, people, camps, sheet, natureAt: new Map() };
         app.ticker.add((ticker) => {
           people.visible = world.scale.x >= 0.9; // too small to read from far away
           if (people.visible) crowd.current.step(Math.min(0.1, ticker.deltaMS / 1000));
@@ -581,6 +585,34 @@ export function MapView({ map, steps, groups, places, people, selected, focus, o
       current.paths.addChild(fallback);
     });
   }, [map, steps, groups, places]);
+
+  // Fields: the tiles where people work the soil this month.
+  useEffect(() => {
+    if (!map) return;
+    void ready.current?.then(() => {
+      const current = scene.current;
+      const texture = current?.sheet?.textures.farmland;
+      if (!current || !texture) return;
+      for (const child of current.fields.removeChildren()) child.destroy();
+      const tilled = new Set<number>();
+      for (const person of people) {
+        if (person.activity === "soil" && person.x >= 0) tilled.add(person.y * map.width + person.x);
+      }
+      for (const index of tilled) {
+        const x = index % map.width;
+        const y = (index - x) / map.width;
+        if (map.river[index] || ["ocean", "coast"].includes(map.biomes[map.biome[index]])) continue;
+        const [cx, cy] = project(x, y);
+        const tile = new Sprite(texture);
+        tile.anchor.set(0.5);
+        tile.position.set(cx, cy + TILE_H / 2);
+        tile.scale.set(SPRITE_SCALE);
+        current.fields.addChild(tile);
+        const grown = current.natureAt.get(index);
+        if (grown) grown.visible = false;
+      }
+    });
+  }, [map, people]);
 
   // What people have built, is building, or has fallen into ruin.
   useEffect(() => {

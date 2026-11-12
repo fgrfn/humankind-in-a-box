@@ -35,6 +35,10 @@ wood:
 soil:
   kind: stock
   name: {de: Bodenfruchtbarkeit, en: Soil fertility}
+  # Nobody can eat soil until somebody learns to farm it. Worked too hard it gives out.
+  work: {de: bestellt Felder, en: working the fields}
+  food_value: 1
+  harvest_base_percent: 0
   capacity: {grassland: 900, forest: 700, marsh: 800, steppe: 450, taiga: 300, tundra: 100, desert: 50, mountain: 120}
   regrowth_percent_per_month: 4
   season_percent: {spring: 120, summer: 100, autumn: 100, winter: 40}

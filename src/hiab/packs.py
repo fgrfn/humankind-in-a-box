@@ -110,6 +110,7 @@ class TechEffects(_Model):
     mortality_percent: int = Field(100, ge=10, le=200)  # multiplies every death chance
     storage_months: int = Field(0, ge=0, le=60)  # added to the months of food a clan can keep
     enables_settlement: bool = False
+    group_adults: int = Field(0, ge=0, le=100000)  # more adults a group can hold together
 
 
 class Technology(_Model):
@@ -171,6 +172,10 @@ class LifeParams(_Model):
     build_start_chance_per_month: float = Field(0.25, ge=0.0, le=1.0)
     ruin_chance_per_year: float = Field(0.15, ge=0.0, le=1.0)
     builders_share_percent: int = Field(25, ge=1, le=100)
+    # Knowledge is kept by people. A group with too few adults, or one that has
+    # lost what a craft needs, can forget what nothing else it knows builds on.
+    knowledge_keepers: int = Field(6, ge=0, le=1000)
+    knowledge_loss_chance_per_year: float = Field(0.03, ge=0.0, le=1.0)
 
 
 class PackSet(_Model):

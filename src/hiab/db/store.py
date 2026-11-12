@@ -198,6 +198,9 @@ MIGRATIONS: list[str] = [
     ALTER TABLE persons ADD COLUMN target_x INTEGER NOT NULL DEFAULT -1;
     ALTER TABLE persons ADD COLUMN work TEXT NOT NULL DEFAULT '{}';
     """,
+    """
+    ALTER TABLE discoveries ADD COLUMN lost INTEGER;
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -449,8 +452,18 @@ class Store:
             "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?)", clan_rows
         )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO discoveries VALUES (?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO discoveries VALUES (?,?,?,?,?,?,NULL)",
             [(world.id, *row) for row in society.new_discoveries],
+        )
+        # Lost knowledge stays on record. Knowledge found again after the loss
+        # has a later tick and is left alone.
+        self.conn.executemany(
+            "UPDATE discoveries SET lost = ? "
+            "WHERE world_id = ? AND group_id = ? AND technology = ? AND tick <= ?",
+            [
+                (tick, world.id, clan_id, tech_id, tick)
+                for clan_id, tech_id, tick in society.forgotten
+            ],
         )
         self.conn.executemany(
             "INSERT OR REPLACE INTO places VALUES (?,?,?,?,?,?,?,?)",

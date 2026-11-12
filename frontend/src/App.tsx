@@ -171,7 +171,7 @@ function Numbers({ stats, series, discoveries, lang, t }: { stats: Stats; series
             <span className="name">{item.name}</span>
             <span className="state">
               {item.known
-                ? `${t("since")} ${item.first_year}, ${t("knownBy")} ${item.clans_knowing} ${item.clans_knowing === 1 ? t("clansOne") : t("clans")}`
+                ? `${t("since")} ${item.first_year}, ${t("knownBy")} ${item.clans_knowing} ${item.clans_knowing === 1 ? t("clansOne") : t("clans")}${item.times_lost ? `, ${item.times_lost}× ${t("forgotten")}` : ""}`
                 : item.requires.length
                   ? `${t("unknown")}, ${t("needs")} ${item.requires.join(", ")}`
                   : t("unknown")}

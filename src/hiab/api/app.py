@@ -294,7 +294,8 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             ]
         techs = _rows(
             conn,
-            "SELECT technology, tick, how FROM discoveries WHERE world_id = ? AND group_id = ? "
+            "SELECT technology, tick, how FROM discoveries "
+            "WHERE world_id = ? AND group_id = ? AND lost IS NULL "
             "ORDER BY tick, technology",
             (row["world_id"], row["id"]),
         )
@@ -500,7 +501,17 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
                 conn,
                 "SELECT d.technology, COUNT(*) AS n FROM discoveries d "
                 "JOIN groups g ON g.world_id = d.world_id AND g.id = d.group_id "
-                "WHERE d.world_id = ? AND g.dissolved IS NULL GROUP BY d.technology",
+                "WHERE d.world_id = ? AND g.dissolved IS NULL AND d.lost IS NULL "
+                "GROUP BY d.technology",
+                (world_id,),
+            )
+        }
+        lost = {
+            row["technology"]: row["n"]
+            for row in _rows(
+                conn,
+                "SELECT technology, COUNT(*) AS n FROM discoveries "
+                "WHERE world_id = ? AND lost IS NOT NULL GROUP BY technology",
                 (world_id,),
             )
         }
@@ -519,6 +530,7 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
                     "known": found is not None,
                     "first_year": None if found is None else found["tick"] // 360,
                     "clans_knowing": knowing.get(tech_id, 0),
+                    "times_lost": lost.get(tech_id, 0),
                 }
             )
         out.sort(key=lambda item: (item["first_year"] is None, item["first_year"] or 0, item["id"]))

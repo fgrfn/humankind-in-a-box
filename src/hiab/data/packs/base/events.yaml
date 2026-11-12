@@ -88,6 +88,11 @@ knowledge_shared:
   text:
     de: "Die {clan} lernen von den {teacher}: {tech}."
     en: "The {clan} learn from the {teacher}: {tech}."
+knowledge_lost:
+  importance: 3
+  text:
+    de: "Die {clan} verlernen: {tech}."
+    en: "The {clan} forget: {tech}."
 clan_split:
   importance: 3
   text:

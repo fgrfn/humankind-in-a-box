@@ -60,3 +60,168 @@ dog:
   base_chance_per_year: 3e-05
   factors: {well_fed: 2.0, large: 1.3}
   effects: {harvest_percent: {game: 25}, mortality_percent: 97}
+
+# ---- Later stone age ----------------------------------------------------
+grinding_stones:
+  name: {de: Mahlsteine, en: Grinding stones}
+  requires: [stone_tools]
+  base_chance_per_year: 0.0002
+  factors: {hungry: 1.5, crafty: 1.5, settled: 1.5}
+  effects: {harvest_percent: {plants: 25}}
+bow:
+  name: {de: Pfeil und Bogen, en: Bow and arrow}
+  requires: [spear, cordage]
+  base_chance_per_year: 0.0002
+  factors: {hungry: 1.8, crafty: 1.5}
+  effects: {harvest_percent: {game: 35}}
+nets:
+  name: {de: Fischnetze, en: Fishing nets}
+  requires: [fishing, cordage]
+  needs_nearby: [fish]
+  base_chance_per_year: 0.0003
+  factors: {coastal: 1.5, large: 1.3}
+  effects: {harvest_percent: {fish: 50}}
+boats:
+  name: {de: Einbaum, en: Dugout boat}
+  requires: [stone_tools, fishing]
+  needs_nearby: [fish, wood]
+  base_chance_per_year: 0.0002
+  factors: {coastal: 2.0, crafty: 1.4}
+  effects: {harvest_percent: {fish: 40}}
+sewing:
+  name: {de: Nähnadel, en: Sewing needle}
+  requires: [hide_clothing, cordage]
+  base_chance_per_year: 0.0002
+  factors: {cold: 2.5, crafty: 1.5}
+  effects: {mortality_percent: 95}
+herbal_lore:
+  name: {de: Heilkräuter, en: Healing herbs}
+  requires: [fire]
+  base_chance_per_year: 0.0002
+  factors: {curious: 2.0, large: 1.3}
+  effects: {mortality_percent: 94}
+smoking:
+  name: {de: Räuchern, en: Smoking food}
+  requires: [food_drying]
+  needs_nearby: [wood]
+  base_chance_per_year: 0.0003
+  factors: {"has:fishing": 1.5, settled: 1.5}
+  effects: {storage_months: 2}
+salt_curing:
+  name: {de: Einsalzen, en: Salting}
+  requires: [food_drying]
+  needs_nearby: [salt]
+  base_chance_per_year: 0.0004
+  factors: {settled: 1.5}
+  effects: {storage_months: 4}
+
+# ---- Farming --------------------------------------------------------------
+farming:
+  name: {de: Ackerbau, en: Farming}
+  requires: [grinding_stones]
+  base_chance_per_year: 0.0002
+  factors: {settled: 4.0, hungry: 1.5, curious: 1.3}
+  effects: {harvest_percent: {soil: 45}, storage_months: 2, group_adults: 14, enables_settlement: true}
+herding:
+  name: {de: Viehhaltung, en: Herding}
+  requires: [dog]
+  base_chance_per_year: 0.0002
+  factors: {settled: 2.0, well_fed: 1.5}
+  effects: {harvest_percent: {soil: 20, game: 10}, mortality_percent: 99, group_adults: 6}
+granary:
+  name: {de: Kornspeicher, en: Granary}
+  requires: [farming, pottery]
+  base_chance_per_year: 0.0004
+  factors: {settled: 2.0, large: 1.5}
+  effects: {storage_months: 3, group_adults: 10}
+weaving:
+  name: {de: Weben, en: Weaving}
+  requires: [cordage, herding]
+  base_chance_per_year: 0.0003
+  factors: {settled: 2.0, crafty: 1.5}
+  effects: {mortality_percent: 96}
+plough:
+  name: {de: Pflug, en: Plough}
+  requires: [farming, herding]
+  base_chance_per_year: 0.0003
+  factors: {settled: 2.0, large: 1.5, crafty: 1.3}
+  effects: {harvest_percent: {soil: 40}, group_adults: 10}
+irrigation:
+  name: {de: Bewässerung, en: Irrigation}
+  requires: [farming]
+  base_chance_per_year: 0.0002
+  factors: {coastal: 2.0, hungry: 1.5, large: 1.5}
+  effects: {harvest_percent: {soil: 30}, group_adults: 10}
+wells:
+  name: {de: Brunnen, en: Wells}
+  requires: [stone_tools, farming]
+  base_chance_per_year: 0.0003
+  factors: {settled: 2.0, large: 1.3}
+  effects: {mortality_percent: 95}
+fermentation:
+  name: {de: Gären und Brauen, en: Fermenting and brewing}
+  requires: [farming, pottery]
+  base_chance_per_year: 0.0003
+  factors: {settled: 1.5, curious: 1.5}
+  effects: {mortality_percent: 97, storage_months: 1}
+mud_brick:
+  name: {de: Lehmziegel, en: Mud brick}
+  requires: [pottery, farming]
+  needs_nearby: [clay]
+  base_chance_per_year: 0.0003
+  factors: {settled: 2.0, large: 1.5}
+  effects: {mortality_percent: 97, group_adults: 12}
+calendar:
+  name: {de: Kalender, en: Calendar}
+  requires: [farming]
+  base_chance_per_year: 0.0002
+  factors: {curious: 2.0, large: 1.5}
+  effects: {harvest_percent: {soil: 15}}
+wheel:
+  name: {de: Rad, en: Wheel}
+  requires: [pottery, herding]
+  base_chance_per_year: 0.0002
+  factors: {crafty: 1.8, large: 1.5}
+  effects: {harvest_percent: {soil: 10}, group_adults: 8}
+tally_marks:
+  name: {de: Zählzeichen, en: Tally marks}
+  requires: [granary]
+  base_chance_per_year: 0.0003
+  factors: {large: 2.0, curious: 1.5}
+  effects: {group_adults: 20}
+
+# ---- Metal ----------------------------------------------------------------
+copper_working:
+  name: {de: Kupferverarbeitung, en: Copper working}
+  requires: [pottery]
+  needs_nearby: [copper_ore]
+  base_chance_per_year: 0.0003
+  factors: {crafty: 2.0, settled: 1.5}
+  effects: {harvest_percent: {plants: 10, game: 10, soil: 10}}
+bronze:
+  name: {de: Bronze, en: Bronze}
+  requires: [copper_working]
+  needs_nearby: [tin_ore]
+  base_chance_per_year: 0.0004
+  factors: {crafty: 1.8, large: 1.5}
+  effects: {harvest_percent: {game: 15, soil: 15}, mortality_percent: 98, group_adults: 10}
+iron_working:
+  name: {de: Eisenverarbeitung, en: Iron working}
+  requires: [copper_working]
+  needs_nearby: [iron_ore, wood]
+  base_chance_per_year: 0.0002
+  factors: {crafty: 1.8, large: 1.5}
+  effects: {harvest_percent: {soil: 30, plants: 10}, group_adults: 12}
+masonry:
+  name: {de: Mauerwerk, en: Masonry}
+  requires: [stone_tools, mud_brick]
+  base_chance_per_year: 0.0003
+  factors: {large: 2.0, crafty: 1.5}
+  effects: {mortality_percent: 97, group_adults: 15}
+sailing:
+  name: {de: Segeln, en: Sailing}
+  requires: [boats, weaving]
+  needs_nearby: [fish]
+  base_chance_per_year: 0.0003
+  factors: {coastal: 2.0, curious: 1.5}
+  effects: {harvest_percent: {fish: 30}}
