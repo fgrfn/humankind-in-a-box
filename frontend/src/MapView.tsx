@@ -62,8 +62,6 @@ const BUILDING_SPRITES: Record<string, string> = {
   kiln: "kiln",
 };
 
-const PEOPLE = ["woman", "man", "child", "elder", "hunter", "gatherer", "fisher"];
-
 // A fixed number per tile, so the same world always looks the same.
 function tileNoise(x: number, y: number, salt: number): number {
   let h = (x * 374761393 + y * 668265263 + salt * 2147483647) | 0;
@@ -97,8 +95,229 @@ function fitLabels(camps: Container, scale: number): void {
       if (child instanceof Text) {
         child.visible = scale >= 0.8;
         child.scale.set(1.05 / scale);
-      } else if (child.label === "person") {
-        child.visible = scale >= 1.3; // too small to read from far away
+      }
+    }
+  }
+}
+
+// ---- People on the map ---------------------------------------------------
+// The simulation settles a clan's month in one step. What is drawn here is that
+// month played out: who walks where follows from what the clan really knows and
+// is really building, but the single steps are display only and never stored.
+
+type Task = "out" | "work" | "back" | "rest";
+
+interface Walker {
+  sprite: Sprite;
+  kind: string;
+  path: [number, number][];
+  leg: number;
+  along: number;
+  task: Task;
+  wait: number;
+  clock: number;
+  dx: number;
+  dy: number;
+}
+
+interface Band {
+  x: number;
+  y: number;
+  walkers: Walker[];
+  reach: Map<number, number>; // tile index -> tile it was reached from
+  targets: Record<string, number[]>;
+}
+
+const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+const REACH = 4;
+const WALK_SPEED = 0.9; // tiles per second
+
+class Crowd {
+  private bands = new Map<number, Band>();
+  private map: WorldMap | null = null;
+
+  private dry(x: number, y: number): boolean {
+    const map = this.map;
+    if (!map || x < 0 || y < 0 || x >= map.width || y >= map.height) return false;
+    const biome = map.biomes[map.biome[y * map.width + x]];
+    return biome !== "ocean" && biome !== "coast";
+  }
+
+  // Everywhere a clan can walk to from its camp without crossing open water.
+  private explore(band: Band, group: Group, places: Place[], natureAt: Map<number, Sprite>): void {
+    const map = this.map!;
+    const start = band.y * map.width + band.x;
+    const distance = new Map<number, number>([[start, 0]]);
+    band.reach = new Map([[start, start]]);
+    const queue = [start];
+    for (let head = 0; head < queue.length; head++) {
+      const index = queue[head];
+      const steps = distance.get(index)!;
+      if (steps >= REACH) continue;
+      const x = index % map.width;
+      const y = (index - x) / map.width;
+      for (const [dx, dy] of NEIGHBOURS) {
+        const next = (y + dy) * map.width + x + dx;
+        if (!this.dry(x + dx, y + dy) || distance.has(next)) continue;
+        distance.set(next, steps + 1);
+        band.reach.set(next, index);
+        queue.push(next);
+      }
+    }
+    const shore: number[] = [];
+    const growth: number[] = [];
+    const far: number[] = [];
+    const near: number[] = [];
+    for (const [index, steps] of distance) {
+      if (steps === 0) continue;
+      const x = index % map.width;
+      const y = (index - x) / map.width;
+      const wet = map.river[index] || NEIGHBOURS.slice(0, 4).some(([dx, dy]) => !this.dry(x + dx, y + dy));
+      if (wet) shore.push(index);
+      if (natureAt.has(index)) growth.push(index);
+      if (steps >= 3) far.push(index);
+      if (steps <= 1) near.push(index);
+    }
+    const sites = places
+      .filter((place) => place.group_id === group.id && place.abandoned_year === null)
+      .flatMap((place) => place.buildings.filter((building) => building.state === "site"))
+      .map((building) => building.y * map.width + building.x)
+      .filter((index) => band.reach.has(index));
+    band.targets = { shore, growth, far, near, sites, any: [...distance.keys()].filter((index) => index !== start) };
+  }
+
+  private cast(group: Group, count: number): string[] {
+    const knows = new Set(group.technologies.map((tech) => tech.id));
+    const roles = ["gatherer", knows.has("spear") ? "hunter" : "man", "woman", knows.has("fishing") ? "fisher" : "child", "elder", "child"];
+    return roles.slice(0, count);
+  }
+
+  private errand(band: Band, kind: string): number | null {
+    const pick = (list: number[]) => (list.length ? list[Math.floor(Math.random() * list.length)] : null);
+    const t = band.targets;
+    if ((kind === "man" || kind === "woman" || kind === "hunter") && t.sites.length && Math.random() < 0.6) return pick(t.sites);
+    if (kind === "fisher") return pick(t.shore) ?? pick(t.any);
+    if (kind === "hunter" || kind === "man") return pick(t.far) ?? pick(t.any);
+    if (kind === "elder" || kind === "child") return pick(t.near) ?? pick(t.any);
+    return pick(t.growth) ?? pick(t.any);
+  }
+
+  private route(band: Band, target: number): [number, number][] {
+    const map = this.map!;
+    const tiles: [number, number][] = [];
+    let index = target;
+    for (let guard = 0; guard < 64; guard++) {
+      tiles.push([index % map.width, Math.floor(index / map.width)]);
+      const from = band.reach.get(index);
+      if (from === undefined || from === index) break;
+      index = from;
+    }
+    return tiles.reverse();
+  }
+
+  sync(layer: Container, sheet: Spritesheet, map: WorldMap, groups: Group[], places: Place[], natureAt: Map<number, Sprite>): void {
+    if (this.map !== map) {
+      for (const band of this.bands.values()) for (const walker of band.walkers) walker.sprite.destroy();
+      this.bands.clear();
+      this.map = map;
+    }
+    const alive = new Set(groups.map((group) => group.id));
+    for (const [id, band] of this.bands) {
+      if (alive.has(id)) continue;
+      for (const walker of band.walkers) walker.sprite.destroy();
+      this.bands.delete(id);
+    }
+    for (const group of groups) {
+      let band = this.bands.get(group.id);
+      const moved = band !== undefined && (band.x !== group.x || band.y !== group.y);
+      if (!band) {
+        band = { x: group.x, y: group.y, walkers: [], reach: new Map(), targets: {} };
+        this.bands.set(group.id, band);
+      }
+      band.x = group.x;
+      band.y = group.y;
+      this.explore(band, group, places, natureAt);
+      const roles = this.cast(group, Math.min(5, Math.ceil(group.population / 5)));
+      while (band.walkers.length > roles.length) band.walkers.pop()!.sprite.destroy();
+      roles.forEach((kind, n) => {
+        let walker = band.walkers[n];
+        if (!walker) {
+          const sprite = new Sprite(sheet.textures[kind] ?? sheet.textures.man);
+          sprite.anchor.set(0.5, 1);
+          sprite.scale.set(SPRITE_SCALE * 0.5);
+          layer.addChild(sprite);
+          walker = { sprite, kind, path: [[group.x, group.y]], leg: 0, along: 0, task: "rest", wait: Math.random() * 6, clock: Math.random() * 10, dx: (Math.random() - 0.5) * 9, dy: (Math.random() - 0.5) * 4 };
+          band.walkers[n] = walker;
+        } else if (walker.kind !== kind) {
+          walker.kind = kind;
+          walker.sprite.texture = sheet.textures[kind] ?? sheet.textures.man;
+        }
+        if (moved) {
+          // The clan has moved on: walk straight to the new camp from wherever one stands.
+          const [fx, fy] = this.where(walker);
+          walker.path = [[fx, fy], [group.x, group.y]];
+          walker.leg = 0;
+          walker.along = 0;
+          walker.task = "back";
+        }
+      });
+    }
+  }
+
+  private where(walker: Walker): [number, number] {
+    const a = walker.path[walker.leg];
+    const b = walker.path[Math.min(walker.leg + 1, walker.path.length - 1)];
+    return [a[0] + (b[0] - a[0]) * walker.along, a[1] + (b[1] - a[1]) * walker.along];
+  }
+
+  step(seconds: number): void {
+    for (const band of this.bands.values()) {
+      for (const walker of band.walkers) {
+        walker.clock += seconds;
+        let lift = 0;
+        if (walker.task === "rest" || walker.task === "work") {
+          walker.wait -= seconds;
+          if (walker.task === "work") lift = Math.abs(Math.sin(walker.clock * 5)) * 1.2;
+          if (walker.wait <= 0) {
+            if (walker.task === "work") {
+              walker.path = [...walker.path].reverse();
+              walker.task = "back";
+            } else {
+              const target = this.errand(band, walker.kind);
+              if (target === null) {
+                walker.wait = 4;
+                continue;
+              }
+              walker.path = this.route(band, target);
+              walker.task = "out";
+            }
+            walker.leg = 0;
+            walker.along = 0;
+          }
+        } else {
+          const a = walker.path[walker.leg];
+          const b = walker.path[Math.min(walker.leg + 1, walker.path.length - 1)];
+          const length = Math.max(0.5, Math.hypot(b[0] - a[0], b[1] - a[1]));
+          walker.along += (seconds * WALK_SPEED) / length;
+          lift = Math.abs(Math.sin(walker.clock * 9)) * 0.7;
+          const heading = b[0] - a[0] - (b[1] - a[1]); // on screen: positive walks right
+          const size = Math.abs(walker.sprite.scale.y);
+          if (heading !== 0) walker.sprite.scale.x = heading > 0 ? size : -size;
+          if (walker.along >= 1) {
+            walker.along = 0;
+            walker.leg += 1;
+            if (walker.leg >= walker.path.length - 1) {
+              walker.leg = walker.path.length - 1;
+              walker.wait = walker.task === "out" ? 3 + Math.random() * 5 : 2 + Math.random() * 7;
+              walker.task = walker.task === "out" ? "work" : "rest";
+            }
+          }
+        }
+        const [fx, fy] = this.where(walker);
+        const [sx, sy] = project(fx, fy);
+        const atCamp = walker.task === "rest" ? 1 : 0.35;
+        walker.sprite.position.set(sx + walker.dx * atCamp, sy + TILE_H / 2 + 2 + walker.dy * atCamp - lift);
+        walker.sprite.zIndex = sy + walker.dy;
       }
     }
   }
@@ -111,6 +330,7 @@ interface Scene {
   paths: Container;
   nature: Container;
   buildings: Container;
+  people: Container;
   camps: Container;
   sheet: Spritesheet | null;
   natureAt: Map<number, Sprite>;
@@ -131,6 +351,7 @@ export function MapView({ map, steps, groups, places, selected, focus, onSelect 
   const scene = useRef<Scene | null>(null);
   const ready = useRef<Promise<void> | null>(null);
   const placed = useRef(false);
+  const crowd = useRef(new Crowd());
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
@@ -160,10 +381,16 @@ export function MapView({ map, steps, groups, places, selected, focus, onSelect 
         const paths = new Container();
         const nature = new Container();
         const buildings = new Container();
+        const people = new Container();
+        people.sortableChildren = true;
         const camps = new Container();
-        world.addChild(terrain, paths, nature, buildings, camps);
+        world.addChild(terrain, paths, nature, buildings, people, camps);
         app.stage.addChild(world);
-        scene.current = { app, world, terrain, paths, nature, buildings, camps, sheet, natureAt: new Map() };
+        scene.current = { app, world, terrain, paths, nature, buildings, people, camps, sheet, natureAt: new Map() };
+        app.ticker.add((ticker) => {
+          people.visible = world.scale.x >= 0.9; // too small to read from far away
+          if (people.visible) crowd.current.step(Math.min(0.1, ticker.deltaMS / 1000));
+        });
 
         const canvas = app.canvas;
         canvas.style.touchAction = "none";
@@ -397,21 +624,6 @@ export function MapView({ map, steps, groups, places, selected, focus, onSelect 
           g.poly([-1.5, 0, 0, -4, 1.5, 0]).fill(0x5a4a34);
         }
         marker.addChild(g);
-        // A few figures stand for the people: one for roughly every six.
-        const spots = [[-9, 3], [8, 4], [-3, 7], [11, -1]];
-        const shown = Math.min(spots.length, Math.ceil(group.population / 6));
-        for (let n = 0; n < shown; n++) {
-          const kind = group.settled || n > 0 ? PEOPLE[tileNoise(group.id, n, 8) % PEOPLE.length] : "travellers";
-          const figure = current.sheet?.textures[kind];
-          if (!figure) break;
-          const person = new Sprite(figure);
-          person.label = "person";
-          person.anchor.set(0.5, 1);
-          person.position.set(spots[n][0], spots[n][1]);
-          const size = SPRITE_SCALE * 0.5;
-          person.scale.set(tileNoise(group.id, n, 9) < 50 ? size : -size, size);
-          marker.addChild(person);
-        }
         const label = new Text({
           text: `${group.settled && group.place ? group.place : group.name} ${group.population}`,
           style: { fontFamily: "'Barlow Semi Condensed', system-ui, sans-serif", fontSize: 11, fontWeight: "500", fill: 0xf2efe6, stroke: { color: 0x10242d, width: 3 } },
@@ -431,6 +643,16 @@ export function MapView({ map, steps, groups, places, selected, focus, onSelect 
       fitLabels(layer, current.world.scale.x);
     });
   }, [groups, selected]);
+
+  // The people themselves: figures that walk out from the camp, work and come back.
+  useEffect(() => {
+    if (!map) return;
+    void ready.current?.then(() => {
+      const current = scene.current;
+      if (!current?.sheet) return;
+      crowd.current.sync(current.people, current.sheet, map, groups, places, current.natureAt);
+    });
+  }, [map, groups, places]);
 
   // First view: centre on where the people are, at a scale that suits the screen.
   useEffect(() => {

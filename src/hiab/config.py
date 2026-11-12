@@ -43,8 +43,8 @@ class Settings(BaseModel):
 
     # New world (fixed once the world exists)
     seed: int | None = Field(None, ge=0, lt=2**63)
-    map_width: int = Field(64, ge=16, le=512)
-    map_height: int = Field(64, ge=16, le=512)
+    map_width: int = Field(128, ge=16, le=512)
+    map_height: int = Field(128, ge=16, le=512)
     land_share: int = Field(45, ge=5, le=95, description="Percent of tiles that are land")
     packs: list[str] = Field(default_factory=lambda: ["base"])
 

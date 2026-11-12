@@ -6,7 +6,7 @@
 - Stufe 1a (Menschen) ist umgesetzt: Personen, Familien, Clans, Nahrungssuche, Hunger, Wanderung, Entdeckungen, Wissensweitergabe, Clan-Spaltung und -Verschmelzung, erste Siedlungen.
 - Stufe 1b (API, Kartenansicht, erste Statistik, Docker-Image) ist umgesetzt. Damit ist Stufe 1 bis auf die Feinabstimmung abgeschlossen.
 - Stufe 2a (Wege und Gebäude) ist umgesetzt: Trittzähler verblassen, aus viel begangenen Kacheln werden Pfade und Wege. Sesshafte Clans bauen nach und nach (Baustelle, fertiges Gebäude, Ruine), Gebäude wirken auf Sterblichkeit und Vorrat. Alte Alltagsereignisse werden ausgedünnt (`HIAB_EVENT_DETAIL_YEARS`, Vorgabe 100).
-- Die Karte zeigt echte Grafik aus fünf erzeugten Bögen, zugeschnitten mit `tools/build_atlas.py`: 16 Geländekacheln, 8 Naturobjekte, 8 Gebäudebilder (Feuer, Zelt, Hütte, Trockengestell, Vorratsgrube, Töpferofen, Baustelle, Ruine) und 8 Figuren. Wandernde Clans erscheinen als Zelt. An jedem Lager stehen ein paar Figuren stellvertretend für die Leute (eine je etwa sechs Menschen, ab mittlerer Zoomstufe); einzelne Personen bewegen sich noch nicht über die Karte.
+- Die Karte zeigt echte Grafik aus fünf erzeugten Bögen, zugeschnitten mit `tools/build_atlas.py`: 16 Geländekacheln, 8 Naturobjekte, 8 Gebäudebilder (Feuer, Zelt, Hütte, Trockengestell, Vorratsgrube, Töpferofen, Baustelle, Ruine) und 8 Figuren. Wandernde Clans erscheinen als Zelt. Die Menschen sind unterwegs: Figuren laufen vom Lager zu Arbeitsplätzen und zurück (sammeln im Bewuchs, fischen am Ufer, jagen weiter draußen, bauen an der Baustelle), passend zu Wissen und Baustellen des Clans. Das ist Anzeige: Die Simulation rechnet weiter monatsweise je Clan, einzelne Schritte werden nicht gespeichert.
 - Als Nächstes der Rest von Stufe 2: Völker, voller Entdeckungsgraph, Wissensverlust, Handel, Kulturen mit Sprache.
 - Noch offen: Lizenz-Entscheidung, Prüfung von PyPI-Name und Domain, Bogen für Tiere.
 
@@ -38,6 +38,9 @@
 Zehn Seeds über 400 Jahre auf einer Karte von 64 x 64 Kacheln: alle zehn Welten überleben, 570 bis 930 Menschen in 39 bis 65 Clans, zwei bis sechs von zehn Entdeckungen gemacht, rund 90 Prozent des Nahrungsbedarfs gedeckt. 500 Jahre rechnen in etwa 25 Sekunden.
 
 ## Bekannte Schwächen
+
+- Die Vorgabe für die Karte ist jetzt 128 x 128 Kacheln (vorher 64 x 64). Seed 5 über 400 Jahre: rund 3.300 Menschen in 220 Clans, 29 Sekunden Rechenzeit. Die Kalibrierung unten stammt noch von der kleinen Karte. Bestehende Welten behalten ihre Größe.
+- Tätigkeiten einzelner Personen gibt es in der Simulation noch nicht, nur in der Anzeige.
 
 - Siedlungen halten ohne Ackerbau im Schnitt nur etwa eine Generation, dann treibt der Hunger die Leute weiter. Das ist für Jäger und Sammler plausibel, sorgt aber für viele Ruinen. Dauerhafte Orte kommen mit dem Ackerbau.
 - Objekte auf der Karte (Bäume, Felsen) sind reine Anzeige aus Biom und Koordinate, sie hängen noch nicht am Holzbestand der Kachel.
