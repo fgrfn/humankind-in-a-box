@@ -175,12 +175,12 @@ class LifeParams(_Model):
     # Knowledge is kept by people. A group with too few adults, or one that has
     # lost what a craft needs, can forget what nothing else it knows builds on.
     knowledge_keepers: int = Field(6, ge=0, le=1000)
-    knowledge_loss_chance_per_year: float = Field(0.03, ge=0.0, le=1.0)
+    knowledge_loss_chance_per_year: float = Field(0.015, ge=0.0, le=1.0)
     # Peoples. A clan whose speech has moved this many sounds away from that of
     # its people may found a people of its own; a clan alone among strangers may
     # join them.
     people_sound_distance: int = Field(3, ge=1, le=20)
-    people_emerge_chance_per_year: float = Field(0.004, ge=0.0, le=1.0)
+    people_emerge_chance_per_year: float = Field(0.002, ge=0.0, le=1.0)
     people_join_chance_per_year: float = Field(0.01, ge=0.0, le=1.0)
     # Land. Every clan holds the tiles around its camp on which nobody presses
     # harder. How hard it presses follows from its adults, what it has built and
@@ -190,6 +190,13 @@ class LifeParams(_Model):
     territory_hold_bonus_percent: int = Field(30, ge=0, le=500)
     foreign_harvest_percent: int = Field(50, ge=0, le=100)
     border_event_tiles: int = Field(25, ge=1, le=100000)
+    # Trade. Neighbours who have something the other lacks may become partners.
+    # Partners count each other's deposits as within reach, help each other
+    # through hunger, learn from each other more readily and wear a path between them.
+    trade_chance_per_year: float = Field(0.01, ge=0.0, le=1.0)
+    trade_partners_max: int = Field(3, ge=0, le=100)
+    trade_walkers_per_year: int = Field(6, ge=0, le=10000)
+    trade_learning_factor: float = Field(3.0, ge=1.0, le=100.0)
 
 
 class PackSet(_Model):

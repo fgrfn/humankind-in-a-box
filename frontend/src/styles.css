@@ -233,3 +233,13 @@ button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 .map-toggle { position: absolute; left: 14px; top: 14px; z-index: 2; min-height: 40px; padding: 0 14px; font: 500 15px/1 var(--data, inherit); color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
 .map-toggle.on { color: var(--deep); background: var(--ochre); border-color: var(--ochre); }
 .map-toggle:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
+
+.map-toggle.second { top: 62px; }
+.away-list { list-style: none; margin: 0 0 18px; padding: 0; }
+.away-list li { padding: 8px 0; border-bottom: 1px solid var(--line); font: 400 16px/1.4 var(--prose); }
+.away-list small { display: block; font: 500 13px/1.3 inherit; color: var(--ochre); font-family: inherit; }
+.dialog .facts { margin-bottom: 18px; }
+.dialog { max-height: calc(100dvh - 40px); overflow-y: auto; }
+
+/* The colour a people has on the map, next to its name. */
+.chip { display: inline-block; width: 11px; height: 11px; margin-right: 8px; transform: rotate(45deg); border: 1px solid var(--deep); vertical-align: 1px; }

@@ -32,6 +32,7 @@ MANY_PEOPLES = (
     "life.people_emerge_chance_per_year: 0.2\n"
     "life.people_join_chance_per_year: 0.2\n"
 )
+TRADERS = "technologies.fire.base_chance_per_year: 0.03\nlife.trade_chance_per_year: 0.5\n"
 
 
 def world_with(settings: Settings, overrides: str) -> Settings:
@@ -143,7 +144,7 @@ def test_peoples_form_split_and_name_their_places(tmp_path: Path, settings: Sett
     assert len({place["name"] for place in places}) == len(places)
 
 
-@pytest.mark.parametrize("overrides", [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES])
+@pytest.mark.parametrize("overrides", [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS])
 def test_such_worlds_resume_identically(tmp_path: Path, settings: Settings, overrides: str) -> None:
     prepared = world_with(settings, overrides)
     simulate(tmp_path / "straight.sqlite", prepared, 110, 5)
@@ -157,8 +158,12 @@ def test_land_is_held_and_borders_follow_strength(tmp_path: Path, settings: Sett
     world = simulate(path, world_with(settings, MANY_PEOPLES), 120, 3)
     society = world.society
     assert society is not None
+    stored_before = society.territory.copy()
+    assert (stored_before > 0).any(), "nobody holds any land after 120 years"
+    # Land is shared out at new year and clans move during the year, so share it
+    # out once more to compare it with where everybody stands now.
+    society.claim()
     territory, land_people = society.territory, society.land_people
-    assert (territory > 0).any(), "nobody holds any land after 120 years"
     assert not (territory[world.map.water] > 0).any(), "open water is nobody's"
     holders = {int(clan_id) for clan_id in set(territory.ravel().tolist()) if clan_id}
     assert holders <= set(society.clans), "only living clans hold land"
@@ -176,7 +181,7 @@ def test_land_is_held_and_borders_follow_strength(tmp_path: Path, settings: Sett
 
     conn = sqlite3.connect(path)
     stored = conn.execute("SELECT data FROM tile_layers WHERE layer = 'territory'").fetchone()[0]
-    assert stored == territory.astype("<i4").tobytes()
+    assert stored == stored_before.astype("<i4").tobytes()
     assert (
         conn.execute(
             "SELECT MAX(value) FROM metrics WHERE key = 'territory.tiles' AND scope_type = 'world'"
@@ -201,3 +206,34 @@ def test_strangers_gather_less_on_held_land(settings: Settings) -> None:
         return clan.food
 
     assert 0 < gathered(foreign=True) < gathered(foreign=False)
+
+
+def test_partners_trade_goods_food_and_knowledge(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, TRADERS), 150, 3)
+    society = world.society
+    assert society is not None
+    linked = [clan for clan in society.clans.values() if clan.partners]
+    assert linked, "nobody trades in a world built for trade"
+    for clan in linked:
+        assert len(clan.partners) <= 3
+        for partner_id in clan.partners:
+            assert clan.id in society.clans[partner_id].partners, "a partnership has two sides"
+    # What a partner has within reach counts as within reach.
+    for clan in linked:
+        own = set(society.goods(clan))
+        for partner_id in clan.partners:
+            for resource in set(society.goods(society.clans[partner_id])) - own:
+                assert society.nearby(clan, resource)
+
+    conn = sqlite3.connect(path)
+    open_links = {
+        (a, b)
+        for a, b in conn.execute("SELECT group_a, group_b FROM trade_links WHERE ended IS NULL")
+    }
+    assert open_links == {
+        (min(clan.id, other), max(clan.id, other)) for clan in linked for other in clan.partners
+    }
+    keys = {row[0] for row in conn.execute("SELECT DISTINCT key FROM metrics")}
+    assert {"trade.begun", "trade.journeys", "trade.partnerships"} <= keys
+    assert conn.execute("SELECT COUNT(*) FROM events WHERE type = 'trade_begun'").fetchone()[0]

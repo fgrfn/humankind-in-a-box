@@ -159,6 +159,9 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
                 "SELECT COUNT(DISTINCT technology) FROM discoveries WHERE world_id = ?"
             ),
             "discoveries_possible": len(packs.technologies),
+            "trade_partnerships": one(
+                "SELECT COUNT(*) FROM trade_links WHERE world_id = ? AND ended IS NULL"
+            ),
             "peoples": one(
                 "SELECT COUNT(DISTINCT culture) FROM groups "
                 "WHERE world_id = ? AND dissolved IS NULL"
@@ -341,16 +344,104 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
         ).fetchone()
         if found is None:
             return [], []
+        held = conn.execute(
+            "SELECT data FROM tile_layers WHERE world_id = ? AND layer = 'land_people'",
+            (world_id,),
+        ).fetchone()
         clans = _layer(found["data"])
-        people_of = {
-            row["id"]: row["culture"]
+        return clans, [0] * len(clans) if held is None else _layer(held["data"])
+
+    @api.get("/worlds/{world_id}/trade")
+    def trade(world_id: int, conn: Db) -> list[dict[str, Any]]:
+        """Every standing trade partnership: who with whom, where and since when."""
+        world_row(conn, world_id)
+        return [
+            {
+                "a": row["group_a"],
+                "b": row["group_b"],
+                "since_year": row["since"] // 360,
+                "ay": row["ay"],
+                "ax": row["ax"],
+                "by": row["by"],
+                "bx": row["bx"],
+            }
             for row in _rows(
                 conn,
-                "SELECT id, culture FROM groups WHERE world_id = ? AND dissolved IS NULL",
+                "SELECT t.group_a, t.group_b, t.since, a.y AS ay, a.x AS ax, b.y AS by, b.x AS bx "
+                "FROM trade_links t "
+                "JOIN groups a ON a.world_id = t.world_id AND a.id = t.group_a "
+                "JOIN groups b ON b.world_id = t.world_id AND b.id = t.group_b "
+                "WHERE t.world_id = ? AND t.ended IS NULL ORDER BY t.group_a, t.group_b",
                 (world_id,),
             )
+        ]
+
+    @api.get("/worlds/{world_id}/since")
+    def since(
+        world_id: int,
+        conn: Db,
+        year: Annotated[int, Query(ge=0)],
+        lang: Lang = default_language,
+    ) -> dict[str, Any]:
+        """What happened since a given year: for "while you were away"."""
+        world = world_row(conn, world_id)
+        start = year * 360
+
+        def count(event_type: str) -> int:
+            return int(
+                conn.execute(
+                    "SELECT COALESCE(SUM(value), 0) FROM metrics WHERE world_id = ? "
+                    "AND key = ? AND scope_type = 'world' AND tick > ?",
+                    (world_id, event_type, start),
+                ).fetchone()[0]
+            )
+
+        def happened(event_type: str) -> int:
+            return int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM events WHERE world_id = ? AND type = ? AND tick > ?",
+                    (world_id, event_type, start),
+                ).fetchone()[0]
+            )
+
+        then = conn.execute(
+            "SELECT value FROM metrics WHERE world_id = ? AND key = 'people.population' "
+            "AND scope_type = 'world' AND tick <= ? ORDER BY tick DESC LIMIT 1",
+            (world_id, start + 360),
+        ).fetchone()
+        now = conn.execute(
+            "SELECT COUNT(*) FROM persons WHERE world_id = ? AND died IS NULL", (world_id,)
+        ).fetchone()[0]
+        highlights = _rows(
+            conn,
+            "SELECT * FROM events WHERE world_id = ? AND tick > ? AND importance >= 3 "
+            "ORDER BY importance DESC, seq DESC LIMIT 8",
+            (world_id, start),
+        )
+        return {
+            "from_year": year,
+            "to_year": world["tick"] // 360,
+            "years": max(0, world["tick"] // 360 - year),
+            "population_then": None if then is None else int(then["value"]),
+            "population_now": now,
+            "births": count("people.births"),
+            "deaths": count("people.deaths"),
+            "discoveries": happened("discovery"),
+            "knowledge_lost": happened("knowledge_lost"),
+            "settlements_founded": happened("settlement_founded"),
+            "settlements_abandoned": happened("settlement_abandoned"),
+            "peoples_emerged": happened("people_emerged"),
+            "peoples_vanished": happened("people_vanished"),
+            "trade_begun": happened("trade_begun"),
+            "highlights": [
+                {
+                    "year": item["tick"] // 360,
+                    "importance": item["importance"],
+                    "text": render_event(packs, item["type"], json.loads(item["data"]), lang),
+                }
+                for item in sorted(highlights, key=lambda item: item["seq"])
+            ],
         }
-        return clans, [people_of.get(clan, 0) for clan in clans]
 
     @api.get("/worlds/{world_id}/territory")
     def territory(world_id: int, conn: Db) -> dict[str, Any]:
@@ -398,6 +489,18 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             "settled": bool(row["settled"]),
             "place": place,
             "buildings": buildings,
+            "partners": [
+                {"id": link["id"], "name": link["name"], "since_year": link["since"] // 360}
+                for link in _rows(
+                    conn,
+                    "SELECT g.id, g.name, t.since FROM trade_links t JOIN groups g "
+                    "ON g.world_id = t.world_id "
+                    "AND g.id = CASE WHEN t.group_a = ? THEN t.group_b ELSE t.group_a END "
+                    "WHERE t.world_id = ? AND t.ended IS NULL AND ? IN (t.group_a, t.group_b) "
+                    "ORDER BY t.since, g.id",
+                    (row["id"], row["world_id"], row["id"]),
+                )
+            ],
             "parent_group": row["parent_group"],
             "founded_year": row["founded"] // 360,
             "dissolved_year": None if row["dissolved"] is None else row["dissolved"] // 360,
