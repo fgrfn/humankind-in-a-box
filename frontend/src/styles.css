@@ -228,3 +228,8 @@ button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 .peoples .count { text-align: right; font-variant-numeric: tabular-nums; color: var(--chalk); }
 .peoples .state { grid-column: 1 / -1; font-size: 15px; color: var(--muted); }
 .peoples .gone .name, .peoples .gone .count { color: var(--muted); font-weight: 400; }
+
+/* Switch on the map: show or hide who holds the land. */
+.map-toggle { position: absolute; left: 14px; top: 14px; z-index: 2; min-height: 40px; padding: 0 14px; font: 500 15px/1 var(--data, inherit); color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.map-toggle.on { color: var(--deep); background: var(--ochre); border-color: var(--ochre); }
+.map-toggle:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }

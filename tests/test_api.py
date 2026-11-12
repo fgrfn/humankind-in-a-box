@@ -207,3 +207,15 @@ def test_peoples_are_listed_with_descent(client: TestClient) -> None:
     assert all(group["people"] in names for group in groups)
     german = client.get("/api/v1/worlds/1/places").json()
     assert all(place["meaning"].startswith("Ort: ") for place in german)
+
+
+def test_territory_layer_matches_the_peoples(client: TestClient) -> None:
+    world_map = client.get("/api/v1/worlds/1/map").json()
+    land = client.get("/api/v1/worlds/1/territory").json()
+    size = world_map["width"] * world_map["height"]
+    assert len(land["clans"]) == len(land["peoples"]) == size
+    assert any(land["peoples"])
+    peoples = client.get("/api/v1/worlds/1/peoples").json()
+    for people in peoples:
+        assert people["tiles"] == land["peoples"].count(people["id"])
+    assert client.get("/api/v1/worlds/1/layers/territory").json()["values"] == land["clans"]

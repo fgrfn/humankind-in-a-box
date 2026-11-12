@@ -98,6 +98,7 @@ export interface People {
   clans: number;
   settlements: number;
   population: number;
+  tiles: number;
   consonants: string;
   vowels: string;
   words: Record<string, string>;
@@ -185,6 +186,7 @@ export const api = {
   stats: (world: number, lang: Lang) => get<Stats>(`/worlds/${world}/stats?lang=${lang}`),
   map: (world: number) => get<WorldMap>(`/worlds/${world}/map`),
   steps: (world: number) => get<{ values: number[] }>(`/worlds/${world}/layers/steps`),
+  territory: (world: number) => get<{ clans: number[]; peoples: number[] }>(`/worlds/${world}/territory`),
   peoples: (world: number) => get<People[]>(`/worlds/${world}/peoples`),
   people: (world: number, lang: Lang) => get<Human[]>(`/worlds/${world}/people?lang=${lang}`),
   person: (world: number, id: number, lang: Lang) => get<PersonDetail>(`/worlds/${world}/persons/${id}?lang=${lang}`),

@@ -150,3 +150,54 @@ def test_such_worlds_resume_identically(tmp_path: Path, settings: Settings, over
     for years in (41, 23, 46):
         simulate(tmp_path / "resumed.sqlite", prepared, years, 5)
     assert table_digests(tmp_path / "resumed.sqlite") == table_digests(tmp_path / "straight.sqlite")
+
+
+def test_land_is_held_and_borders_follow_strength(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, MANY_PEOPLES), 120, 3)
+    society = world.society
+    assert society is not None
+    territory, land_people = society.territory, society.land_people
+    assert (territory > 0).any(), "nobody holds any land after 120 years"
+    assert not (territory[world.map.water] > 0).any(), "open water is nobody's"
+    holders = {int(clan_id) for clan_id in set(territory.ravel().tolist()) if clan_id}
+    assert holders <= set(society.clans), "only living clans hold land"
+    for clan_id in sorted(holders)[:20]:
+        clan = society.clans[clan_id]
+        ys, xs = (territory == clan_id).nonzero()
+        _strength, radius = society.hold(clan)
+        # Nothing is held beyond a clan's reach, and what it holds belongs to its people.
+        assert max(abs(ys - clan.y).max(), abs(xs - clan.x).max()) <= max(radius, 0) + 1
+        assert (land_people[ys, xs] == clan.culture).all()
+
+    # A stronger clan reaches further than a weaker one.
+    clans = sorted(society.clans.values(), key=lambda clan: society.hold(clan)[0])
+    assert society.hold(clans[-1])[1] >= society.hold(clans[0])[1]
+
+    conn = sqlite3.connect(path)
+    stored = conn.execute("SELECT data FROM tile_layers WHERE layer = 'territory'").fetchone()[0]
+    assert stored == territory.astype("<i4").tobytes()
+    assert (
+        conn.execute(
+            "SELECT MAX(value) FROM metrics WHERE key = 'territory.tiles' AND scope_type = 'world'"
+        ).fetchone()[0]
+        > 0
+    )
+
+
+def test_strangers_gather_less_on_held_land(settings: Settings) -> None:
+    packs = load_packs(settings.packs, settings.data_dir)
+    from hiab.sim.engine import World
+
+    def gathered(foreign: bool) -> int:
+        world = World.create(1, 9, packs, 48, 48, 45)
+        society = world.society
+        assert society is not None
+        clan = next(iter(society.clans.values()))
+        if foreign:
+            society.land_people[:] = clan.culture + 1
+        clan.food = 0
+        society.forage(clan)
+        return clan.food
+
+    assert 0 < gathered(foreign=True) < gathered(foreign=False)

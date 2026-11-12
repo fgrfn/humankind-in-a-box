@@ -353,6 +353,7 @@ interface Scene {
   world: Container;
   terrain: Container;
   paths: Container;
+  borders: Container;
   fields: Container;
   nature: Container;
   buildings: Container;
@@ -368,13 +369,14 @@ interface Props {
   groups: Group[];
   places: Place[];
   people: Human[];
+  land: { clans: number[]; peoples: number[] } | null;
   selected: number | null;
   focus: { id: number; nonce: number } | null;
   onSelect: (id: number) => void;
   onPerson: (id: number) => void;
 }
 
-export function MapView({ map, steps, groups, places, people, selected, focus, onSelect, onPerson }: Props) {
+export function MapView({ map, steps, groups, places, people, land, selected, focus, onSelect, onPerson }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<Scene | null>(null);
   const ready = useRef<Promise<void> | null>(null);
@@ -409,14 +411,15 @@ export function MapView({ map, steps, groups, places, people, selected, focus, o
         const terrain = new Container();
         const paths = new Container();
         const fields = new Container();
+        const borders = new Container();
         const nature = new Container();
         const buildings = new Container();
         const people = new Container();
         people.sortableChildren = true;
         const camps = new Container();
-        world.addChild(terrain, fields, paths, nature, buildings, people, camps);
+        world.addChild(terrain, fields, paths, borders, nature, buildings, people, camps);
         app.stage.addChild(world);
-        scene.current = { app, world, terrain, paths, fields, nature, buildings, people, camps, sheet, natureAt: new Map() };
+        scene.current = { app, world, terrain, paths, borders, fields, nature, buildings, people, camps, sheet, natureAt: new Map() };
         app.ticker.add((ticker) => {
           people.visible = world.scale.x >= 0.9; // too small to read from far away
           if (people.visible) crowd.current.step(Math.min(0.1, ticker.deltaMS / 1000));
@@ -596,6 +599,49 @@ export function MapView({ map, steps, groups, places, people, selected, focus, o
       current.paths.addChild(fallback);
     });
   }, [map, steps, groups, places]);
+
+  // Territories: land tinted in the colour of the people that holds it, a strong
+  // line where two peoples meet and a faint one between clans of one people.
+  useEffect(() => {
+    if (!map) return;
+    void ready.current?.then(() => {
+      const current = scene.current;
+      if (!current) return;
+      for (const child of current.borders.removeChildren()) child.destroy();
+      if (!land || land.peoples.length !== map.width * map.height) return;
+      const wash = new Graphics();
+      const inner = new Graphics();
+      const outer = new Graphics();
+      const at = (x: number, y: number, list: number[]) => (x < 0 || y < 0 || x >= map.width || y >= map.height ? 0 : list[y * map.width + x]);
+      for (let y = 0; y < map.height; y++) {
+        for (let x = 0; x < map.width; x++) {
+          const people = land.peoples[y * map.width + x];
+          if (!people) continue;
+          const clan = land.clans[y * map.width + x];
+          const colour = peopleColour(people);
+          diamond(wash, x, y);
+          wash.fill({ color: colour, alpha: 0.2 });
+          const [cx, top] = project(x, y);
+          const cy = top + TILE_H / 2;
+          // The four edges of the tile and the neighbour behind each.
+          const edges: [number, number, number, number, number, number][] = [
+            [cx, top, cx + TILE_W / 2, cy, x, y - 1],
+            [cx + TILE_W / 2, cy, cx, top + TILE_H, x + 1, y],
+            [cx, top + TILE_H, cx - TILE_W / 2, cy, x, y + 1],
+            [cx - TILE_W / 2, cy, cx, top, x - 1, y],
+          ];
+          for (const [x1, y1, x2, y2, nx, ny] of edges) {
+            if (at(nx, ny, land.peoples) !== people) {
+              outer.moveTo(x1, y1).lineTo(x2, y2).stroke({ color: colour, width: 1.6, alpha: 0.95 });
+            } else if (at(nx, ny, land.clans) !== clan && (nx > x || ny > y)) {
+              inner.moveTo(x1, y1).lineTo(x2, y2).stroke({ color: colour, width: 0.6, alpha: 0.45 });
+            }
+          }
+        }
+      }
+      current.borders.addChild(wash, inner, outer);
+    });
+  }, [map, land]);
 
   // Fields: the tiles where people work the soil this month.
   useEffect(() => {

@@ -182,6 +182,14 @@ class LifeParams(_Model):
     people_sound_distance: int = Field(3, ge=1, le=20)
     people_emerge_chance_per_year: float = Field(0.004, ge=0.0, le=1.0)
     people_join_chance_per_year: float = Field(0.01, ge=0.0, le=1.0)
+    # Land. Every clan holds the tiles around its camp on which nobody presses
+    # harder. How hard it presses follows from its adults, what it has built and
+    # whether it is settled; hunger weakens it. Strangers gather less on held land.
+    territory_strength_per_tile: int = Field(7, ge=1, le=10000)
+    territory_max_radius: int = Field(7, ge=0, le=40)
+    territory_hold_bonus_percent: int = Field(30, ge=0, le=500)
+    foreign_harvest_percent: int = Field(50, ge=0, le=100)
+    border_event_tiles: int = Field(25, ge=1, le=100000)
 
 
 class PackSet(_Model):

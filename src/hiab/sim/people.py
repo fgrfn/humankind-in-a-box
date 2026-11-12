@@ -126,6 +126,9 @@ class Society:
         self.next_building = 1
         self.extinct = False
         self.steps = np.zeros((world.map.height, world.map.width), dtype=np.int32)
+        # Which clan holds each tile (0: nobody), and the people that clan belongs to.
+        self.territory = np.zeros((world.map.height, world.map.width), dtype=np.int32)
+        self.land_people = np.zeros((world.map.height, world.map.width), dtype=np.int32)
         self.dirty_persons: set[int] = set()
         self.dirty_clans: set[int] = set()
         self.dirty_places: set[int] = set()
@@ -460,11 +463,15 @@ class Society:
 
         raws: dict[str, np.ndarray] = {}
         foods: dict[str, int] = {}
+        # On land another people holds, strangers get less: they are watched and driven off.
+        held_by = self.land_people[area]
+        foreign = (held_by != 0) & (held_by != clan.culture)
         for rid in self.food_ids:
             percent = harvest_percent[rid]
             if percent <= 0:
                 continue
             raw = world.stocks[rid][area].astype(np.int64) * p.harvest_share_percent // 100
+            raw = np.where(foreign, raw * p.foreign_harvest_percent // 100, raw)
             amount = int(raw.sum()) * percent // 100 * world.packs.resources[rid].food_value
             if amount > 0:
                 raws[rid], foods[rid] = raw, amount
@@ -1165,12 +1172,92 @@ class Society:
                 },
             )
 
+    def hold(self, clan: Clan) -> tuple[int, int]:
+        """How hard a clan presses on the land around it, and how far."""
+        p = self.p
+        strength = len(self.adults(clan))
+        if clan.settled:
+            standing = sum(
+                1 for b in self.places[clan.place]["buildings"] if b["state"] == "standing"
+            )
+            strength += 8 + 3 * standing
+        strength = strength * (100 - min(60, self.unmet_average(clan))) // 100
+        if strength <= 0:
+            return 0, 0
+        radius = (3 if clan.settled else 2) + strength // p.territory_strength_per_tile
+        return strength, min(p.territory_max_radius, radius)
+
+    def claim(self) -> None:
+        """Once a year the land is shared out anew.
+
+        A tile goes to the clan that presses hardest on it: strong clans reach
+        further, pressure falls off with distance, and whoever holds a tile
+        already has an edge, so borders move only when the balance really shifts.
+        No dice: the outcome follows from where and how strong everybody is.
+        """
+        world, p = self.world, self.p
+        shape = self.territory.shape
+        best = np.zeros(shape, dtype=np.int64)
+        owner = np.zeros(shape, dtype=np.int32)
+        for clan_id in sorted(self.clans):
+            clan = self.clans[clan_id]
+            strength, radius = self.hold(clan)
+            if strength <= 0:
+                continue
+            area = self.window(clan.y, clan.x, radius)
+            ys, xs = np.mgrid[area]
+            distance = np.maximum(np.abs(ys - clan.y), np.abs(xs - clan.x))
+            pressure = (strength * (radius + 1 - distance) * 100).astype(np.int64)
+            held = self.territory[area] == clan.id
+            pressure = np.where(
+                held, pressure * (100 + p.territory_hold_bonus_percent) // 100, pressure
+            )
+            wins = pressure > best[area]
+            best[area] = np.where(wins, pressure, best[area])
+            owner[area] = np.where(wins, clan.id, owner[area])
+        owner[world.map.water] = 0
+
+        people_of = np.zeros(self.next_clan + 1, dtype=np.int32)
+        for clan_id in sorted(self.clans):
+            people_of[clan_id] = self.clans[clan_id].culture
+        land_people = people_of[owner]
+
+        # Land that passed from one people to another is news.
+        before, after = self.land_people, land_people
+        moved = (before != after) & (before != 0) & (after != 0)
+        if moved.any():
+            pairs, counts = np.unique(
+                before[moved].astype(np.int64) * (self.next_culture + 1) + after[moved],
+                return_counts=True,
+            )
+            for pair, count in zip(pairs.tolist(), counts.tolist(), strict=True):
+                loser_id, winner_id = divmod(pair, self.next_culture + 1)
+                world.count("territory.tiles_taken", count)
+                if count < p.border_event_tiles:
+                    continue
+                loser, winner = self.cultures.get(loser_id), self.cultures.get(winner_id)
+                if loser is None or winner is None:
+                    continue
+                world.emit(
+                    "border_shift",
+                    data={
+                        "people": winner.name,
+                        "people_id": winner.id,
+                        "from": loser.name,
+                        "from_id": loser.id,
+                        "tiles": count,
+                    },
+                )
+        self.territory = owner
+        self.land_people = land_people
+
     def new_year(self) -> None:
         """Footsteps fade, and what stands in abandoned places slowly falls apart."""
         p = self.p
         self.steps = (
             self.steps.astype(np.int64) * (100 - p.steps_decay_percent_per_year) // 100
         ).astype(np.int32)
+        self.claim()
         for place_id in sorted(self.places):
             place = self.places[place_id]
             if place["abandoned"] is None:
@@ -1405,6 +1492,12 @@ class Society:
                 (tick, "people.population", "culture", culture_id, float(by_culture[culture_id]))
             )
         rows.append((tick, "peoples.count", "world", 0, float(len(by_culture))))
+        held = np.bincount(self.land_people.ravel(), minlength=self.next_culture + 1)
+        for culture_id in sorted(by_culture):
+            rows.append(
+                (tick, "territory.tiles", "culture", culture_id, float(int(held[culture_id])))
+            )
+        rows.append((tick, "territory.tiles", "world", 0, float(int((self.territory > 0).sum()))))
         rows.append((tick, "people.population", "world", 0, float(population)))
         rows.append((tick, "people.adults", "world", 0, float(adults_total)))
         rows.append((tick, "people.families", "world", 0, float(len(families))))
@@ -1492,7 +1585,11 @@ class Society:
         }
 
     def load_state(
-        self, state: dict[str, Any], persons: list[Person], steps: np.ndarray | None
+        self,
+        state: dict[str, Any],
+        persons: list[Person],
+        steps: np.ndarray | None,
+        territory: np.ndarray | None = None,
     ) -> None:
         self.next_person = state["next_person"]
         self.next_clan = state["next_clan"]
@@ -1547,6 +1644,12 @@ class Society:
             self.by_month[(person.born // DAYS_PER_MONTH) % 12].append(person.id)
         if steps is not None:
             self.steps = steps
+        if territory is not None:
+            self.territory = territory
+            people_of = np.zeros(self.next_clan + 1, dtype=np.int32)
+            for clan_id in sorted(self.clans):
+                people_of[clan_id] = self.clans[clan_id].culture
+            self.land_people = people_of[np.clip(territory, 0, self.next_clan)]
         self._effects = {}
         self.clear_dirty()
         if self.clans and not self.cultures:

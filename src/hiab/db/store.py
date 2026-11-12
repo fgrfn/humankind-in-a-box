@@ -544,6 +544,10 @@ class Store:
             "INSERT OR REPLACE INTO tile_layers VALUES (?, 'steps', ?)",
             (world.id, society.steps.astype("<i4").tobytes()),
         )
+        self.conn.execute(
+            "INSERT OR REPLACE INTO tile_layers VALUES (?, 'territory', ?)",
+            (world.id, society.territory.astype("<i4").tobytes()),
+        )
         society.clear_dirty()
 
     def load_world(
@@ -645,7 +649,16 @@ class Store:
                 if layer is None
                 else np.frombuffer(layer[0], dtype="<i4").reshape(shape).astype(np.int32)
             )
-            world.society.load_state(loaded["society"], persons, steps)
+            held = self.conn.execute(
+                "SELECT data FROM tile_layers WHERE world_id = ? AND layer = 'territory'",
+                (world_id,),
+            ).fetchone()
+            territory = (
+                None
+                if held is None
+                else np.frombuffer(held[0], dtype="<i4").reshape(shape).astype(np.int32)
+            )
+            world.society.load_state(loaded["society"], persons, steps, territory)
         return world
 
 

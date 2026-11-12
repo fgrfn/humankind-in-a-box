@@ -179,7 +179,7 @@ function Numbers({ stats, series, discoveries, peoples, lang, t }: { stats: Stat
               <span className="state">
                 {item.parent ? `${t("descendedFrom")} ${item.parent}` : t("firstPeople")}, {t("year")} {item.founded_year}
                 {item.ended_year === null ? `, ${item.clans} ${item.clans === 1 ? t("clansOne") : t("clans")}` : ` – ${item.ended_year}`}
-                , {t("sounds")} {item.consonants.split("").join(" ")} · {item.vowels.split("").join(" ")}
+                {item.tiles ? `, ${formatNumber(item.tiles, lang)} ${t("tilesOfLand")}` : ""}, {t("sounds")} {item.consonants.split("").join(" ")} · {item.vowels.split("").join(" ")}
               </span>
             </li>
           );
@@ -281,6 +281,8 @@ export function App() {
   const [series, setSeries] = useState<Series>({});
   const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
   const [peoples, setPeoples] = useState<People[]>([]);
+  const [land, setLand] = useState<{ clans: number[]; peoples: number[] }>({ clans: [], peoples: [] });
+  const [showLand, setShowLand] = useState(true);
   const [marks, setMarks] = useState<Mark[]>([]);
   const [view, setView] = useState<View>("map");
   const [ledgerOpen, setLedgerOpen] = useState(() => window.matchMedia("(min-width: 821px)").matches);
@@ -345,6 +347,7 @@ export function App() {
         api.peoples(worldId),
       ]);
       setPeoples(nextPeoples);
+      setLand(await api.territory(worldId));
       setSteps(nextSteps.values);
       setSeries(nextSeries);
       setDiscoveries(nextDiscoveries);
@@ -477,7 +480,10 @@ export function App() {
 
       <main>
         <div className="stage" hidden={view !== "map"}>
-          <MapView map={map} steps={steps} groups={groups} places={places} people={people} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
+          <MapView map={map} steps={steps} groups={groups} places={places} people={people} land={showLand ? land : null} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
+          <button className={`map-toggle ${showLand ? "on" : ""}`} aria-pressed={showLand} onClick={() => setShowLand((shown) => !shown)}>
+            {t("land")}
+          </button>
           <aside className={`ledger ${ledgerOpen ? "open" : ""}`} aria-label={t("chronicle")}>
             <button className="ledger-head" onClick={() => setLedgerOpen((open) => !open)} aria-expanded={ledgerOpen} title={ledgerOpen ? t("hideChronicle") : t("showChronicle")}>
               <span className="ledger-title">{t("chronicle")}</span>

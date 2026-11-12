@@ -148,3 +148,8 @@ people_vanished:
   text:
     de: "Niemand nennt sich mehr {people}. Das Volk ist Geschichte."
     en: "Nobody calls themselves {people} any more. The people is history."
+border_shift:
+  importance: 2
+  text:
+    de: "Die {people} drängen die {from} zurück und halten nun {tiles} Felder ihres Landes."
+    en: "The {people} push back the {from} and now hold {tiles} tiles of their land."
