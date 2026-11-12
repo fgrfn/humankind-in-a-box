@@ -75,6 +75,8 @@ class Resource(_Model):
     # stock that people can eat: food per harvested unit, and how much of the
     # harvestable amount people get without any knowledge (percent)
     food_value: int = Field(0, ge=0, le=100)
+    # what somebody is doing who goes out for this resource, for display
+    work: Text | None = None
     harvest_base_percent: int = Field(0, ge=0, le=300)
     # deposit: chance per land tile of that biome, in permille
     occurrence_permille: dict[str, int] = Field(default_factory=dict)
@@ -168,6 +170,7 @@ class LifeParams(_Model):
     path_road_steps: int = Field(1000, ge=1)
     build_start_chance_per_month: float = Field(0.25, ge=0.0, le=1.0)
     ruin_chance_per_year: float = Field(0.15, ge=0.0, le=1.0)
+    builders_share_percent: int = Field(25, ge=1, le=100)
 
 
 class PackSet(_Model):

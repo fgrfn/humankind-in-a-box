@@ -31,3 +31,13 @@ The owner left the design open. Direction chosen for the web view:
 - **Structure:** three views (map, numbers, clans). On wide screens the chronicle is a ledger docked over the map, on phones a sheet that slides up from the bottom, with a tab bar in thumb reach.
 - **Charts** are hand-drawn SVG with a crosshair readout, a legend for two series and a table view. The two series colours are checked as a pair for colour-vision separation and contrast against the panel; do not change one alone.
 - Not done on purpose: card grids with shadows, uppercase labels, monospace data labels, decorative motion.
+
+## 2026-11-12: activities per person
+
+The owner wants a life simulation: people who visibly do things. Decision: the month stays the unit of the simulation, but inside it every adult gets one activity and one target tile. No extra dice: who does what follows from traits and yields, so the world log does not grow.
+
+- `Person.activity` is a food resource id, `build:<building>`, `search`, or empty for children. `Person.work` counts months per kind of work over a life.
+- With an open site and enough food, `builders_share_percent` of the adults build, most skilful first. Building progress is their skill, no longer the head count of all adults; building work in `buildings.yaml` was cut to a third to keep the pace.
+- Foragers are split over the foods in proportion to what each yields this month; each crew walks to the richest tile of its food. Harvest capacity is the foragers' vigor.
+- The map shows one figure per living person walking to that target. The steps on screen are display only and never stored.
+- Not yet: daily routines, individual skills that grow with practice, tools carried by a person. Activities are the place to hang those on later.

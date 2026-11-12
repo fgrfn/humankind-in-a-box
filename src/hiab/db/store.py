@@ -192,6 +192,12 @@ MIGRATIONS: list[str] = [
     ) WITHOUT ROWID;
     CREATE INDEX buildings_by_place ON buildings (world_id, place_id);
     """,
+    """
+    ALTER TABLE persons ADD COLUMN activity TEXT NOT NULL DEFAULT '';
+    ALTER TABLE persons ADD COLUMN target_y INTEGER NOT NULL DEFAULT -1;
+    ALTER TABLE persons ADD COLUMN target_x INTEGER NOT NULL DEFAULT -1;
+    ALTER TABLE persons ADD COLUMN work TEXT NOT NULL DEFAULT '{}';
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -411,10 +417,15 @@ class Store:
                     person.last_birth,
                     person.moved,
                     person.discoveries,
+                    person.activity,
+                    person.target_y,
+                    person.target_x,
+                    _json(dict(sorted(person.work.items()))),
                 )
             )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", person_rows
+            "INSERT OR REPLACE INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            person_rows,
         )
         clan_rows = []
         for clan_id in sorted(society.dirty_clans | set(society.retired)):
@@ -564,10 +575,15 @@ class Store:
                     last_birth=row[11],
                     moved=row[12],
                     discoveries=row[13],
+                    activity=row[14],
+                    target_y=row[15],
+                    target_x=row[16],
+                    work=json.loads(row[17]),
                 )
                 for row in self.conn.execute(
                     "SELECT id, name, sex, born, mother, father, family, clan, partner, traits, "
-                    "children, last_birth, moved, discoveries FROM persons "
+                    "children, last_birth, moved, discoveries, activity, target_y, target_x, work "
+                    "FROM persons "
                     "WHERE world_id = ? AND died IS NULL ORDER BY id",
                     (world_id,),
                 )

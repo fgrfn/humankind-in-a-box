@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import sqlite3
 from pathlib import Path
@@ -120,3 +121,37 @@ def test_building_worlds_resume_identically(tmp_path: Path, early: Settings) -> 
     straight = table_digests(tmp_path / "straight.sqlite")
     assert straight["buildings"][0] > 0
     assert table_digests(tmp_path / "resumed.sqlite") == straight
+
+
+def test_every_adult_has_work_and_builders_build(tmp_path: Path, early: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, early, 120, 3)
+    society = world.society
+    assert society is not None and world.packs.life is not None
+    foods = set(world.packs.foods())
+    seen: set[str] = set()
+    for clan in society.clans.values():
+        grown = {person.id for person in society.adults(clan)}
+        for person_id in clan.members:
+            person = society.persons[person_id]
+            kind = person.activity.split(":", 1)[0]
+            if person_id in grown:
+                assert kind in foods | {"build", "search"}, person.activity
+                assert sum(person.work.values()) > 0
+                # Work is done near the camp, never across the map.
+                assert max(abs(person.target_y - clan.y), abs(person.target_x - clan.x)) <= 6
+                seen.add(kind)
+            else:
+                assert person.activity == ""
+    assert seen & foods
+
+    conn = sqlite3.connect(path)
+    keys = {row[0] for row in conn.execute("SELECT DISTINCT key FROM metrics")}
+    assert "work.build" in keys, "somebody built in 120 years"
+    assert any(key.startswith("work.") and key != "work.build" for key in keys)
+    # A whole working life adds up: nobody worked more months than they were adult.
+    tick = conn.execute("SELECT tick FROM worlds").fetchone()[0]
+    adult_age = world.packs.life.adult_age
+    for born, work in conn.execute("SELECT born, work FROM persons WHERE died IS NULL"):
+        months = sum(json.loads(work).values())
+        assert months <= max(0, (tick - born) // 30 - adult_age * 12) + 1

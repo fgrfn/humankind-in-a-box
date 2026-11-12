@@ -1,37 +1,38 @@
 # What a settled clan can build. Materials are taken from the stocks around
-# the settlement, work is counted in adult-months.
+# the settlement, work is counted in builder-months
+# (about a quarter of the adults build while a site is open).
 fire_place:
   name: {de: Versammlungsfeuer, en: Gathering fire}
   requires: [fire]
   materials: {wood: 20}
-  work: 8
+  work: 3
   per_people: 60
   mortality_percent: 99
 hut:
   name: {de: Hütte, en: Hut}
   requires: [shelter]
   materials: {wood: 150}
-  work: 60
+  work: 20
   houses: 5
   mortality_percent: 94
 drying_rack:
   name: {de: Trockengestell, en: Drying rack}
   requires: [food_drying]
   materials: {wood: 30}
-  work: 15
+  work: 5
   per_people: 25
   storage_months: 1
 storage_pit:
   name: {de: Vorratsgrube, en: Storage pit}
   requires: [food_drying]
   materials: {wood: 40}
-  work: 30
+  work: 10
   per_people: 20
   storage_months: 2
 kiln:
   name: {de: Töpferofen, en: Kiln}
   requires: [pottery]
   materials: {wood: 100}
-  work: 60
+  work: 20
   per_people: 40
   storage_months: 1

@@ -81,7 +81,41 @@ export interface Group {
   population: number;
   technologies: Technology[];
   buildings: Building[];
-  members?: { id: number; name: string; sex: "f" | "m"; age: number; children: number }[];
+  members?: { id: number; name: string; sex: "f" | "m"; age: number; children: number; activity: string; activity_text: string }[];
+}
+
+export interface Human {
+  id: number;
+  name: string;
+  sex: "f" | "m";
+  age: number;
+  clan: number;
+  activity: string;
+  text: string;
+  y: number;
+  x: number;
+}
+
+export interface PersonDetail {
+  id: number;
+  name: string;
+  sex: "f" | "m";
+  born_year: number;
+  died_year: number | null;
+  cause: string | null;
+  age: number;
+  clan: number;
+  clan_name: string | null;
+  mother: { id: number; name: string } | null;
+  father: { id: number; name: string } | null;
+  partner: { id: number; name: string } | null;
+  children: { id: number; name: string }[];
+  traits: Record<string, number>;
+  tiles_moved: number;
+  discoveries: number;
+  activity: string;
+  activity_text: string;
+  work_months: { activity: string; text: string; months: number }[];
 }
 
 export interface WorldEvent extends Calendar {
@@ -131,6 +165,8 @@ export const api = {
   stats: (world: number, lang: Lang) => get<Stats>(`/worlds/${world}/stats?lang=${lang}`),
   map: (world: number) => get<WorldMap>(`/worlds/${world}/map`),
   steps: (world: number) => get<{ values: number[] }>(`/worlds/${world}/layers/steps`),
+  people: (world: number, lang: Lang) => get<Human[]>(`/worlds/${world}/people?lang=${lang}`),
+  person: (world: number, id: number, lang: Lang) => get<PersonDetail>(`/worlds/${world}/persons/${id}?lang=${lang}`),
   places: (world: number, lang: Lang) => get<Place[]>(`/worlds/${world}/places?lang=${lang}`),
   groups: (world: number, lang: Lang) => get<Group[]>(`/worlds/${world}/groups?lang=${lang}`),
   group: (world: number, id: number, lang: Lang) => get<Group>(`/worlds/${world}/groups/${id}?lang=${lang}`),
