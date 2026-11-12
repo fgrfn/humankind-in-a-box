@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Discovery, type Group, type Human, type Lang, type People, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
+import { api, type Discovery, type Group, type Human, type Lang, type People, type Since, type TradeLink, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
 import { Chart, SERIES_COLOURS, type Point } from "./Chart";
 import { HistoryBand, type Mark } from "./HistoryBand";
 import { formatNumber, translator, type TextKey } from "./i18n";
+import { peopleCss } from "./colours";
 import { MapView } from "./MapView";
 
 type View = "map" | "numbers" | "clans";
@@ -122,6 +123,7 @@ function Numbers({ stats, series, discoveries, peoples, lang, t }: { stats: Stat
     [t("population"), formatNumber(stats.population, lang)],
     [t("everLived"), formatNumber(stats.ever_lived, lang)],
     [t("peoples"), formatNumber(stats.peoples, lang)],
+    [t("partnerships"), formatNumber(stats.trade_partnerships, lang)],
     [t("clans"), formatNumber(stats.clans, lang)],
     [t("settlements"), formatNumber(stats.settlements, lang)],
     [t("discoveries"), `${stats.discoveries} / ${stats.discoveries_possible}`],
@@ -171,9 +173,12 @@ function Numbers({ stats, series, discoveries, peoples, lang, t }: { stats: Stat
           const largest = Math.max(1, ...peoples.map((other) => other.population));
           return (
             <li key={item.id} className={item.ended_year === null ? "" : "gone"}>
-              <span className="name">{item.name}</span>
+              <span className="name">
+                <i className="chip" style={{ background: peopleCss(item.id) }} aria-hidden="true" />
+                {item.name}
+              </span>
               <span className="bar" aria-hidden="true">
-                <span style={{ width: `${(100 * item.population) / largest}%` }} />
+                <span style={{ width: `${(100 * item.population) / largest}%`, background: peopleCss(item.id) }} />
               </span>
               <span className="count">{item.ended_year === null ? formatNumber(item.population, lang) : t("gone")}</span>
               <span className="state">
@@ -206,7 +211,7 @@ function Numbers({ stats, series, discoveries, peoples, lang, t }: { stats: Stat
   );
 }
 
-function ClanDetail({ detail, t, onShow, onPerson }: { detail: Group; t: Translate; onShow: () => void; onPerson: (id: number) => void }) {
+function ClanDetail({ detail, t, onShow, onPerson, onClan }: { detail: Group; t: Translate; onShow: () => void; onPerson: (id: number) => void; onClan: (id: number) => void }) {
   return (
     <article className="detail">
       <h2>{detail.name}</h2>
@@ -217,6 +222,23 @@ function ClanDetail({ detail, t, onShow, onPerson }: { detail: Group; t: Transla
       <button className="plain" onClick={onShow}>
         {t("showOnMap")}
       </button>
+      {detail.partners.length > 0 ? (
+        <>
+          <h3>{t("tradesWith")}</h3>
+          <ul className="knowledge">
+            {detail.partners.map((partner) => (
+              <li key={partner.id}>
+                <button className="plain name" onClick={() => onClan(partner.id)}>
+                  {partner.name}
+                </button>
+                <small>
+                  {t("since")} {partner.since_year}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
       <h3>{t("knowledge")}</h3>
       {detail.technologies.length === 0 ? <p className="note">{t("noKnowledge")}</p> : null}
       <ul className="knowledge">
@@ -283,6 +305,10 @@ export function App() {
   const [peoples, setPeoples] = useState<People[]>([]);
   const [land, setLand] = useState<{ clans: number[]; peoples: number[] }>({ clans: [], peoples: [] });
   const [showLand, setShowLand] = useState(true);
+  const [links, setLinks] = useState<TradeLink[]>([]);
+  const [showTrade, setShowTrade] = useState(true);
+  const [away, setAway] = useState<Since | null>(null);
+  const seenChecked = useRef<number | null>(null);
   const [marks, setMarks] = useState<Mark[]>([]);
   const [view, setView] = useState<View>("map");
   const [ledgerOpen, setLedgerOpen] = useState(() => window.matchMedia("(min-width: 821px)").matches);
@@ -329,6 +355,20 @@ export function App() {
         api.places(worldId, lang),
       ]);
       setStats(nextStats);
+      // "While you were away": the browser remembers the last year it saw of this world.
+      const key = `hiab.seen.${worldId}`;
+      try {
+        if (seenChecked.current !== worldId) {
+          seenChecked.current = worldId;
+          const seen = Number(window.localStorage.getItem(key));
+          if (Number.isFinite(seen) && seen > 0 && nextStats.year - seen >= 5) {
+            void api.since(worldId, seen, lang).then(setAway);
+          }
+        }
+        window.localStorage.setItem(key, String(nextStats.year));
+      } catch {
+        // No storage in this browser: then there is simply no summary.
+      }
       setGroups(nextGroups);
       setPlaces(nextPlaces);
     },
@@ -348,6 +388,7 @@ export function App() {
       ]);
       setPeoples(nextPeoples);
       setLand(await api.territory(worldId));
+      setLinks(await api.trade(worldId));
       setSteps(nextSteps.values);
       setSeries(nextSeries);
       setDiscoveries(nextDiscoveries);
@@ -480,9 +521,12 @@ export function App() {
 
       <main>
         <div className="stage" hidden={view !== "map"}>
-          <MapView map={map} steps={steps} groups={groups} places={places} people={people} land={showLand ? land : null} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
+          <MapView map={map} steps={steps} groups={groups} places={places} people={people} land={showLand ? land : null} links={showTrade ? links : []} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
           <button className={`map-toggle ${showLand ? "on" : ""}`} aria-pressed={showLand} onClick={() => setShowLand((shown) => !shown)}>
             {t("land")}
+          </button>
+          <button className={`map-toggle second ${showTrade ? "on" : ""}`} aria-pressed={showTrade} onClick={() => setShowTrade((shown) => !shown)}>
+            {t("trade")}
           </button>
           <aside className={`ledger ${ledgerOpen ? "open" : ""}`} aria-label={t("chronicle")}>
             <button className="ledger-head" onClick={() => setLedgerOpen((open) => !open)} aria-expanded={ledgerOpen} title={ledgerOpen ? t("hideChronicle") : t("showChronicle")}>
@@ -510,6 +554,7 @@ export function App() {
                   <button className={group.id === selected ? "on" : ""} onClick={() => setSelected(group.id)}>
                     <span className="clan-name">{group.name}</span>
                     <span className="clan-where">
+                      {group.people ? <i className="chip" style={{ background: peopleCss(group.people_id) }} aria-hidden="true" /> : null}
                       {group.people ? `${group.people}, ` : ""}
                       {group.settled ? (group.place ?? t("settled")) : t("wandering")}
                     </span>
@@ -518,7 +563,7 @@ export function App() {
                 </li>
               ))}
             </ul>
-            {detail ? <ClanDetail detail={detail} t={t} onShow={() => showOnMap(detail.id)} onPerson={showPerson} /> : <p className="note pick">{t("pickClan")}</p>}
+            {detail ? <ClanDetail detail={detail} t={t} onShow={() => showOnMap(detail.id)} onPerson={showPerson} onClan={setSelected} /> : <p className="note pick">{t("pickClan")}</p>}
           </div>
         ) : null}
       </main>
@@ -530,6 +575,53 @@ export function App() {
           </button>
         ))}
       </nav>
+
+      {away ? (
+        <div className="overlay" onClick={() => setAway(null)}>
+          <div className="dialog" role="dialog" aria-modal="true" aria-label={t("awayTitle")} onClick={(event) => event.stopPropagation()}>
+            <h2>{t("awayTitle")}</h2>
+            <p className="lede">
+              {formatNumber(away.years, lang)} {t("awayYears")}: {t("year")} {away.from_year} – {away.to_year}
+            </p>
+            <dl className="facts">
+              {(
+                [
+                  [t("awayPeople"), away.population_then === null ? formatNumber(away.population_now, lang) : `${formatNumber(away.population_then, lang)} → ${formatNumber(away.population_now, lang)}`],
+                  [t("awayBorn"), formatNumber(away.births, lang)],
+                  [t("awayDied"), formatNumber(away.deaths, lang)],
+                  [t("awayDiscoveries"), String(away.discoveries)],
+                  [t("awayLost"), String(away.knowledge_lost)],
+                  [t("awayFounded"), String(away.settlements_founded)],
+                  [t("awayAbandoned"), String(away.settlements_abandoned)],
+                  [t("awayPeoples"), String(away.peoples_emerged)],
+                  [t("awayVanished"), String(away.peoples_vanished)],
+                  [t("awayTrade"), String(away.trade_begun)],
+                ] as [string, string][]
+              ).map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <h3>{t("awayHighlights")}</h3>
+            {away.highlights.length === 0 ? <p className="note">{t("awayQuiet")}</p> : null}
+            <ul className="away-list">
+              {away.highlights.map((item, index) => (
+                <li key={index}>
+                  <small>
+                    {t("year")} {item.year}
+                  </small>
+                  {item.text}
+                </li>
+              ))}
+            </ul>
+            <button className="solid" onClick={() => setAway(null)}>
+              {t("close")}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {person ? (
         <div className="overlay" onClick={() => setPerson(null)}>

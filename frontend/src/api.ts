@@ -17,6 +17,7 @@ export interface Stats extends Calendar {
   discoveries: number;
   discoveries_possible: number;
   peoples: number;
+  trade_partnerships: number;
   births_total: number;
   deaths_total: number;
   migrations_total: number;
@@ -85,6 +86,7 @@ export interface Group {
   population: number;
   technologies: Technology[];
   buildings: Building[];
+  partners: { id: number; name: string; since_year: number }[];
   members?: { id: number; name: string; sex: "f" | "m"; age: number; children: number; activity: string; activity_text: string }[];
 }
 
@@ -102,6 +104,34 @@ export interface People {
   consonants: string;
   vowels: string;
   words: Record<string, string>;
+}
+
+export interface TradeLink {
+  a: number;
+  b: number;
+  since_year: number;
+  ay: number;
+  ax: number;
+  by: number;
+  bx: number;
+}
+
+export interface Since {
+  from_year: number;
+  to_year: number;
+  years: number;
+  population_then: number | null;
+  population_now: number;
+  births: number;
+  deaths: number;
+  discoveries: number;
+  knowledge_lost: number;
+  settlements_founded: number;
+  settlements_abandoned: number;
+  peoples_emerged: number;
+  peoples_vanished: number;
+  trade_begun: number;
+  highlights: { year: number; importance: number; text: string }[];
 }
 
 export interface Human {
@@ -186,6 +216,8 @@ export const api = {
   stats: (world: number, lang: Lang) => get<Stats>(`/worlds/${world}/stats?lang=${lang}`),
   map: (world: number) => get<WorldMap>(`/worlds/${world}/map`),
   steps: (world: number) => get<{ values: number[] }>(`/worlds/${world}/layers/steps`),
+  trade: (world: number) => get<TradeLink[]>(`/worlds/${world}/trade`),
+  since: (world: number, year: number, lang: Lang) => get<Since>(`/worlds/${world}/since?year=${year}&lang=${lang}`),
   territory: (world: number) => get<{ clans: number[]; peoples: number[] }>(`/worlds/${world}/territory`),
   peoples: (world: number) => get<People[]>(`/worlds/${world}/peoples`),
   people: (world: number, lang: Lang) => get<Human[]>(`/worlds/${world}/people?lang=${lang}`),

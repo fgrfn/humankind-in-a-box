@@ -217,6 +217,16 @@ MIGRATIONS: list[str] = [
     ALTER TABLE groups ADD COLUMN culture INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE places ADD COLUMN meaning TEXT NOT NULL DEFAULT '';
     """,
+    """
+    CREATE TABLE trade_links (
+        world_id INTEGER NOT NULL,
+        group_a INTEGER NOT NULL,
+        group_b INTEGER NOT NULL,
+        since INTEGER NOT NULL,
+        ended INTEGER,
+        PRIMARY KEY (world_id, group_a, group_b, since)
+    ) WITHOUT ROWID;
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -237,6 +247,7 @@ CONTENT_TABLES: dict[str, str] = {
     "tile_layers": "world_id, layer",
     "buildings": "world_id, id",
     "cultures": "world_id, id",
+    "trade_links": "world_id, group_a, group_b, since",
 }
 
 
@@ -467,6 +478,15 @@ class Store:
                 )
             )
         self.conn.executemany(
+            "INSERT OR REPLACE INTO trade_links VALUES (?,?,?,?,NULL)",
+            [(world.id, *link) for link in society.new_links],
+        )
+        self.conn.executemany(
+            "UPDATE trade_links SET ended = ? "
+            "WHERE world_id = ? AND group_a = ? AND group_b = ? AND ended IS NULL AND since <= ?",
+            [(tick, world.id, a, b, tick) for a, b, tick in society.ended_links],
+        )
+        self.conn.executemany(
             "INSERT OR REPLACE INTO cultures VALUES (?,?,?,?,?,?,?,?,?)",
             [
                 (
@@ -547,6 +567,10 @@ class Store:
         self.conn.execute(
             "INSERT OR REPLACE INTO tile_layers VALUES (?, 'territory', ?)",
             (world.id, society.territory.astype("<i4").tobytes()),
+        )
+        self.conn.execute(
+            "INSERT OR REPLACE INTO tile_layers VALUES (?, 'land_people', ?)",
+            (world.id, society.land_people.astype("<i4").tobytes()),
         )
         society.clear_dirty()
 
@@ -658,7 +682,17 @@ class Store:
                 if held is None
                 else np.frombuffer(held[0], dtype="<i4").reshape(shape).astype(np.int32)
             )
+            peoples_held = self.conn.execute(
+                "SELECT data FROM tile_layers WHERE world_id = ? AND layer = 'land_people'",
+                (world_id,),
+            ).fetchone()
             world.society.load_state(loaded["society"], persons, steps, territory)
+            if peoples_held is not None:
+                # As it stood when the land was last shared out: a clan may have
+                # changed its people since, and the next sharing compares with this.
+                world.society.land_people = (
+                    np.frombuffer(peoples_held[0], dtype="<i4").reshape(shape).astype(np.int32)
+                )
         return world
 
 

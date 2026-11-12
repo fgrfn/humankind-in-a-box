@@ -219,3 +219,21 @@ def test_territory_layer_matches_the_peoples(client: TestClient) -> None:
     for people in peoples:
         assert people["tiles"] == land["peoples"].count(people["id"])
     assert client.get("/api/v1/worlds/1/layers/territory").json()["values"] == land["clans"]
+
+
+def test_trade_and_since_summary(client: TestClient) -> None:
+    links = client.get("/api/v1/worlds/1/trade").json()
+    stats = client.get("/api/v1/worlds/1/stats").json()
+    assert stats["trade_partnerships"] == len(links)
+    for link in links:
+        assert link["a"] < link["b"]
+        group = client.get(f"/api/v1/worlds/1/groups/{link['a']}").json()
+        assert link["b"] in [partner["id"] for partner in group["partners"]]
+    summary = client.get("/api/v1/worlds/1/since", params={"year": 20}).json()
+    assert summary["from_year"] == 20 and summary["to_year"] == stats["year"]
+    assert summary["years"] == stats["year"] - 20
+    assert summary["population_now"] == stats["population"]
+    assert 0 < summary["births"] < stats["births_total"]
+    assert len(summary["highlights"]) <= 8
+    assert all(item["importance"] >= 3 and item["year"] >= 20 for item in summary["highlights"])
+    assert client.get("/api/v1/worlds/1/since").status_code == 422

@@ -66,6 +66,7 @@ class Clan:
     month: int  # month of the year in which the clan's yearly matters are decided
     language: dict[str, str]
     culture: int = 0  # the people the clan belongs to
+    partners: dict[int, int] = field(default_factory=dict)  # trading partner -> since tick
     members: list[int] = field(default_factory=list)
     techs: dict[str, int] = field(default_factory=dict)
     food: int = 0
@@ -137,6 +138,8 @@ class Society:
         self.dirty_cultures: set[int] = set()
         self.new_discoveries: list[tuple[int, str, int, int, str]] = []
         self.forgotten: list[tuple[int, str, int]] = []  # clan, technology, tick
+        self.new_links: list[tuple[int, int, int]] = []  # clan, clan, since tick
+        self.ended_links: list[tuple[int, int, int]] = []  # clan, clan, end tick
         self.food_ids = world.packs.foods()
         self.campable = ~world.map.water & ~world.map.river
         self._effects: dict[int, tuple[dict[str, int], float, int, int]] = {}
@@ -444,13 +447,17 @@ class Society:
             slice(max(0, x - radius), min(world_map.width, x + radius + 1)),
         )
 
-    def forage(self, clan: Clan) -> None:
-        world, p = self.world, self.p
+    def monthly_need(self, clan: Clan) -> int:
+        p = self.p
         adults = len(self.adults(clan))
         children = len(clan.members) - adults
-        need = (
+        return (
             (adults * 100 + children * p.child_need_percent) * p.food_need_per_person_month // 100
         )
+
+    def forage(self, clan: Clan) -> None:
+        world, p = self.world, self.p
+        need = self.monthly_need(clan)
         if need <= 0:
             return
         harvest_percent, _mortality, storage_months, _together = self.effects(clan)
@@ -491,6 +498,21 @@ class Society:
         self.send_out(clan, foragers, takes or foods, raws, area)
 
         clan.food += gathered
+        if clan.food < need:
+            # Trading partners with more than they need this month help out.
+            for partner_id in sorted(clan.partners):
+                partner = self.clans.get(partner_id)
+                if partner is None:
+                    continue
+                spare = partner.food - self.monthly_need(partner)
+                given = min(spare, need - clan.food)
+                if given <= 0:
+                    continue
+                partner.food -= given
+                clan.food += given
+                world.count("trade.food", given)
+                if clan.food >= need:
+                    break
         eaten = min(clan.food, need)
         clan.food = min(clan.food - eaten, capacity)
         clan.unmet.append(100 - eaten * 100 // need)
@@ -611,6 +633,9 @@ class Society:
             return
         if person.partner == 0:
             self.maybe_pair(person, clan)
+            # Pairing can take somebody to the partner's clan;
+            # a child is born where the mother lives now.
+            clan = self.clans[person.clan]
         if (
             person.sex == 0
             and person.partner != 0
@@ -726,6 +751,8 @@ class Society:
         self.dirty_clans.add(clan.id)
         self.abandon_place(clan, quiet=True)
         self.world.emit(event, data={"clan": clan.name, "clan_id": clan.id, **data})
+        for partner_id in sorted(clan.partners):
+            self.unlink(clan, partner_id)
         self.retired[clan.id] = clan
         del self.clans[clan.id]
         self._effects.pop(clan.id, None)
@@ -767,9 +794,98 @@ class Society:
             area = self.window(clan.y, clan.x, self.p.forage_radius)
             return bool((world.capacity[resource_id][area] > 0).any())
         if resource_id in world.map.deposit_ids:
-            area = self.window(clan.y, clan.x, self.p.forage_radius + 2)
-            return bool((world.map.deposit[area] == world.map.deposit_ids.index(resource_id)).any())
+            if resource_id in self.goods(clan):
+                return True
+            # What a trading partner has within reach can be had from them.
+            return any(
+                resource_id in self.goods(self.clans[partner_id])
+                for partner_id in sorted(clan.partners)
+                if partner_id in self.clans
+            )
         return False
+
+    def goods(self, clan: Clan) -> list[str]:
+        """The deposits a clan has within reach of its camp."""
+        world = self.world
+        area = self.window(clan.y, clan.x, self.p.forage_radius + 2)
+        present = {int(index) for index in np.unique(world.map.deposit[area]) if index >= 0}
+        return [world.map.deposit_ids[index] for index in sorted(present)]
+
+    def unlink(self, clan: Clan, partner_id: int) -> None:
+        clan.partners.pop(partner_id, None)
+        self.dirty_clans.add(clan.id)
+        other = self.clans.get(partner_id)
+        if other is not None:
+            other.partners.pop(clan.id, None)
+            self.dirty_clans.add(other.id)
+        low, high = sorted((clan.id, partner_id))
+        self.ended_links.append((low, high, self.world.tick))
+
+    def trade(self, clan: Clan) -> None:
+        """Partnerships begin between neighbours with something to offer each
+        other, and end when the two drift apart."""
+        world, p = self.world, self.p
+        for partner_id in sorted(clan.partners):
+            other = self.clans.get(partner_id)
+            apart = other is None or (
+                max(abs(other.y - clan.y), abs(other.x - clan.x)) > 2 * p.contact_radius
+            )
+            if apart:
+                self.unlink(clan, partner_id)
+                world.count("trade.ended")
+        mine = set(self.goods(clan))
+        if len(clan.partners) < p.trade_partners_max:
+            near = sorted(
+                (
+                    (max(abs(other.y - clan.y), abs(other.x - clan.x)), other.id)
+                    for other in self.clans.values()
+                    if other.id != clan.id and other.id not in clan.partners
+                ),
+            )
+            for distance, other_id in near:
+                if distance > p.contact_radius:
+                    break
+                other = self.clans[other_id]
+                if len(other.partners) >= p.trade_partners_max:
+                    continue
+                theirs = set(self.goods(other))
+                offered = sorted((theirs - mine) | (mine - theirs))
+                if not offered and not (clan.settled and other.settled):
+                    continue  # nothing either of them lacks
+                factors = []
+                if other.culture == clan.culture:
+                    factors.append(("same_people", 2.0))
+                if clan.settled and other.settled:
+                    factors.append(("both_settled", 2.0))
+                if offered:
+                    factors.append(("goods_to_offer", 2.0))
+                if not world.roll(
+                    "trade_begins", "group", clan.id, p.trade_chance_per_year, factors
+                ):
+                    continue
+                clan.partners[other.id] = world.tick
+                other.partners[clan.id] = world.tick
+                self.dirty_clans.update((clan.id, other.id))
+                low, high = sorted((clan.id, other.id))
+                self.new_links.append((low, high, world.tick))
+                world.count("trade.begun")
+                world.emit(
+                    "trade_begun",
+                    data={
+                        "clan": clan.name,
+                        "clan_id": clan.id,
+                        "partner": other.name,
+                        "partner_id": other.id,
+                        "goods": offered,
+                    },
+                )
+                break
+        # The yearly coming and going wears a path between partners.
+        for partner_id in sorted(clan.partners):
+            other = self.clans.get(partner_id)
+            if other is not None and partner_id > clan.id and p.trade_walkers_per_year:
+                self.walk(clan.y, clan.x, other.y, other.x, p.trade_walkers_per_year)
+                world.count("trade.journeys")
 
     def learn(self, clan: Clan, tech_id: str, discoverer: int, how: str) -> None:
         clan.techs[tech_id] = self.world.tick
@@ -959,8 +1075,17 @@ class Society:
                     continue
                 if any(required not in clan.techs for required in tech_def.requires):
                     continue
+                taught = (
+                    [("trade_partner", p.trade_learning_factor)]
+                    if other.id in clan.partners
+                    else []
+                )
                 if world.roll(
-                    f"learn.{tech_id}", "group", clan.id, p.contact_learning_chance_per_year, []
+                    f"learn.{tech_id}",
+                    "group",
+                    clan.id,
+                    p.contact_learning_chance_per_year,
+                    taught,
                 ):
                     self.learn(clan, tech_id, 0, "learned")
                     world.count(f"tech.{tech_id}.learned")
@@ -975,6 +1100,7 @@ class Society:
                         },
                     )
 
+        self.trade(clan)
         self.forget(clan, adults)
         self.kinship(clan)
 
@@ -1492,6 +1618,8 @@ class Society:
                 (tick, "people.population", "culture", culture_id, float(by_culture[culture_id]))
             )
         rows.append((tick, "peoples.count", "world", 0, float(len(by_culture))))
+        links = sum(len(clan.partners) for clan in self.clans.values()) // 2
+        rows.append((tick, "trade.partnerships", "world", 0, float(links)))
         held = np.bincount(self.land_people.ravel(), minlength=self.next_culture + 1)
         for culture_id in sorted(by_culture):
             rows.append(
@@ -1534,6 +1662,8 @@ class Society:
         self.dirty_cultures.clear()
         self.new_discoveries.clear()
         self.forgotten.clear()
+        self.new_links.clear()
+        self.ended_links.clear()
         self.retired = {}
         self.dead = {}
         self.vanished = set()
@@ -1571,6 +1701,7 @@ class Society:
                     "month": c.month,
                     "language": c.language,
                     "culture": c.culture,
+                    "partners": {str(k): c.partners[k] for k in sorted(c.partners)},
                     "techs": dict(sorted(c.techs.items())),
                     "food": c.food,
                     "unmet": c.unmet,
@@ -1609,6 +1740,7 @@ class Society:
                 month=raw["month"],
                 language=dict(raw["language"]),
                 culture=raw.get("culture", 0),
+                partners={int(k): v for k, v in raw.get("partners", {}).items()},
                 techs=dict(raw["techs"]),
                 food=raw["food"],
                 unmet=list(raw["unmet"]),
