@@ -49,3 +49,4 @@ The owner wants a life simulation: people who visibly do things. Decision: the m
 - Rule is fragile at the start: succession is the moment clans may leave (`realm_break_on_succession`), and a seat left alone after a succession ends the chiefdom.
 - Chiefdoms keep their clans inside their people (factor 0.2 on drifting apart). This is how large peoples arise, as the owner asked, instead of by raising `people_max_clans`.
 - Realms and peoples are shown one at a time on the map, so realms reuse the twelve fixed colours, stepping five places per id so that neighbours founded close in time differ.
+- Consolidation (owner's wish: many groups early, fewer and larger later, as in history) works through rule, not by lowering split chances: assimilation into the seat's people, daughter clans staying under the same rule, and weak chiefdoms submitting to larger ones at succession. Wars will add conquest.

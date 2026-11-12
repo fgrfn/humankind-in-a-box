@@ -1129,6 +1129,8 @@ class Society:
             if clan.realm != realm.id or clan.id == realm.seat:
                 continue
             factors = [] if clan.culture == realm.people else [("other_people", 2.0)]
+            if world.tick - realm.founded >= p.realm_settled_years * DAYS_PER_YEAR:
+                factors.append(("old_realm", 0.4))
             if world.roll(
                 "realm_breaks_away", "group", clan.id, p.realm_break_on_succession, factors
             ):
@@ -1136,6 +1138,9 @@ class Society:
         seat = self.clans.get(realm.seat)
         if seat is not None and not self.realm_members(seat):
             self.end_realm(realm)  # nobody but the seat's own follows the new ruler
+            return
+        if seat is not None:
+            self.submit(realm, seat)
 
     def leave_realm(self, clan: Clan, realm: Realm, why: str) -> None:
         clan.realm = 0
@@ -1171,8 +1176,10 @@ class Society:
             if seat is None:
                 return
             if clan.id != seat.id:
-                if max(abs(clan.y - seat.y), abs(clan.x - seat.x)) > p.realm_reach * 3 // 2:
+                if max(abs(clan.y - seat.y), abs(clan.x - seat.x)) > p.realm_reach * 2:
                     self.leave_realm(clan, realm, "too_far")
+                    return
+                self.assimilate(clan, realm)
                 return
             self.reach_out(clan, realm, adults)
             return
@@ -1256,6 +1263,11 @@ class Society:
                 factors.append(("persuasive_ruler", 1.5))
             if other.unmet and other.unmet[-1] >= 20:
                 factors.append(("hungry", 1.5))  # the seat's stores are a pull
+            if members >= 5:
+                factors.append(("mighty", 1.0 + members / 10))  # the large draw the small
+            if not other.settled:
+                # Wanderers seldom bind themselves: they would soon be gone again.
+                factors.append(("wandering", 0.4))
             if not world.roll(
                 "realm_joined", "group", other.id, p.realm_join_chance_per_year, factors
             ):
@@ -1273,6 +1285,86 @@ class Society:
                 },
             )
             return  # one a year
+
+    def assimilate(self, clan: Clan, realm: Realm) -> None:
+        """A clan of another people under the rule of a chiefdom takes up its tongue."""
+        if clan.culture == realm.people:
+            return
+        target = self.cultures.get(realm.people)
+        if target is None or target.ended is not None:
+            return
+        world, p = self.world, self.p
+        seat = self.clans[realm.seat]
+        factors = []
+        if max(abs(clan.y - seat.y), abs(clan.x - seat.x)) <= p.realm_reach // 2:
+            factors.append(("near_the_seat", 2.0))
+        if not world.roll(
+            "realm_assimilates", "group", clan.id, p.realm_assimilate_chance_per_year, factors
+        ):
+            return
+        before = self.cultures[clan.culture]
+        clan.culture = target.id
+        clan.language = dict(target.language)
+        self.dirty_clans.add(clan.id)
+        world.count("peoples.assimilated")
+        world.emit(
+            "people_assimilated",
+            data={
+                "clan": clan.name,
+                "clan_id": clan.id,
+                "people": target.name,
+                "people_id": target.id,
+                "from": before.name,
+                "from_id": before.id,
+                "realm": realm.name,
+                "realm_id": realm.id,
+            },
+        )
+        self.fade(before)
+
+    def submit(self, realm: Realm, seat: Clan) -> None:
+        """A chiefdom with a new ruler may bow to a larger neighbour and become part of it."""
+        world, p = self.world, self.p
+        mine = [clan for clan in self.clans.values() if clan.realm == realm.id]
+        sizes: dict[int, int] = {}
+        for clan in self.clans.values():
+            if clan.realm and clan.realm != realm.id:
+                sizes[clan.realm] = sizes.get(clan.realm, 0) + 1
+        candidates = []
+        for other_id in sorted(sizes):
+            other = self.realms[other_id]
+            other_seat = self.clans.get(other.seat)
+            if other.ended is not None or other_seat is None:
+                continue
+            if max(abs(other_seat.y - seat.y), abs(other_seat.x - seat.x)) > p.realm_reach:
+                continue
+            if sizes[other_id] <= len(mine) or sizes[other_id] + len(mine) > p.realm_max_clans:
+                continue
+            candidates.append((-sizes[other_id], other_id))
+        if not candidates:
+            return
+        larger = self.realms[min(candidates)[1]]
+        factors = (
+            [("same_people", 2.0)] if larger.people == realm.people else [("other_people", 0.5)]
+        )
+        if not world.roll("realm_submits", "group", seat.id, p.realm_union_chance, factors):
+            return
+        for clan in sorted(mine, key=lambda c: c.id):
+            clan.realm = larger.id
+            self.dirty_clans.add(clan.id)
+        realm.ended = world.tick
+        self.dirty_realms.add(realm.id)
+        world.count("realms.united")
+        world.emit(
+            "realm_submitted",
+            data={
+                "realm": realm.name,
+                "realm_id": realm.id,
+                "to": larger.name,
+                "to_id": larger.id,
+                "clans": len(mine),
+            },
+        )
 
     def move_seat(self, realm: Realm) -> None:
         """The seat is gone: the largest settled clan of the realm takes over, or it falls."""
@@ -1333,7 +1425,11 @@ class Society:
             if outlying:
                 factors.append(("people_too_large", 1.0 + 4.0 * len(members) / p.people_max_clans))
             if clan.realm:
-                factors.append(("bound_by_realm", 0.2))
+                bound = self.realms.get(clan.realm)
+                own = bound is not None and bound.people == clan.culture
+                factors.append(
+                    ("speaks_the_rulers_tongue", 0.05) if own else ("bound_by_realm", 0.2)
+                )
             if clan.settled:
                 factors.append(("settled", 1.5))
             if world.roll(
@@ -1940,6 +2036,14 @@ class Society:
         new.techs = dict(clan.techs)
         for tech_id in sorted(new.techs):
             self.new_discoveries.append((new.id, tech_id, self.world.tick, 0, "inherited"))
+        realm = self.realms.get(clan.realm)
+        if realm is not None and realm.ended is None and realm.seat in self.clans:
+            seat = self.clans[realm.seat]
+            near = max(abs(new.y - seat.y), abs(new.x - seat.x)) <= self.p.realm_reach * 2
+            room = 1 + len(self.realm_members(seat)) < self.p.realm_max_clans
+            if near and room:
+                new.realm = realm.id  # the daughter clan stays under the same rule
+                self.world.count("realms.grew_by_split")
         movers = [pid for pid in clan.members if self.persons[pid].family in leaving]
         for person_id in movers:
             person = self.persons[person_id]
