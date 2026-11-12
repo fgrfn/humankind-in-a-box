@@ -237,3 +237,37 @@ def test_partners_trade_goods_food_and_knowledge(tmp_path: Path, settings: Setti
     keys = {row[0] for row in conn.execute("SELECT DISTINCT key FROM metrics")}
     assert {"trade.begun", "trade.journeys", "trade.partnerships"} <= keys
     assert conn.execute("SELECT COUNT(*) FROM events WHERE type = 'trade_begun'").fetchone()[0]
+
+
+def test_stores_fill_are_bounded_and_books_balance(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, TRADERS), 80, 3)
+    society = world.society
+    assert society is not None
+    assert any(clan.stores.get("wood", 0) > 0 for clan in society.clans.values())
+    for clan in society.clans.values():
+        assert all(amount >= 0 for amount in clan.stores.values()), clan.name
+        assert set(clan.stores) <= set(society.good_ids)
+        assert clan.food >= 0
+        for good, (gained, used, traded_in, traded_out) in clan.last_flows.items():
+            assert good == "food" or good in society.good_ids
+            assert min(gained, used, traded_in, traded_out) >= 0
+
+    # Over a year, what a clan has is what it had plus what came minus what went.
+    clan = max(society.clans.values(), key=lambda item: len(item.members))
+    before = {"food": clan.food, **clan.stores}
+    start_flows = {good: list(values) for good, values in clan.flows.items()}
+    members = len(clan.members)
+    month = world.tick // 30
+    while world.tick // 30 == month:
+        world.step()
+    if clan.id in society.clans and len(clan.members) == members and clan.flows:
+        for good, (gained, used, traded_in, traded_out) in clan.flows.items():
+            was = start_flows.get(good, [0, 0, 0, 0])
+            if gained < was[0]:
+                continue  # the clan's year turned in between and the books were closed
+            change = (
+                (gained - was[0]) - (used - was[1]) + (traded_in - was[2]) - (traded_out - was[3])
+            )
+            now = clan.food if good == "food" else clan.stores.get(good, 0)
+            assert now - before.get(good, 0) == change, good

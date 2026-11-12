@@ -227,6 +227,9 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (world_id, group_a, group_b, since)
     ) WITHOUT ROWID;
     """,
+    """
+    ALTER TABLE groups ADD COLUMN stores TEXT NOT NULL DEFAULT '{}';
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -475,6 +478,17 @@ class Store:
                     int(clan.settled),
                     clan.place,
                     clan.culture,
+                    _json(
+                        {
+                            "food": clan.food,
+                            "food_room": 0
+                            if clan.id not in society.clans
+                            else society.monthly_need(clan) * society.effects(clan)[2],
+                            "room": 0 if clan.id not in society.clans else society.room(clan),
+                            "goods": dict(sorted(clan.stores.items())),
+                            "last_year": dict(sorted(clan.last_flows.items())),
+                        }
+                    ),
                 )
             )
         self.conn.executemany(
@@ -504,7 +518,7 @@ class Store:
             ],
         )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
+            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
         )
         self.conn.executemany(
             "INSERT OR REPLACE INTO discoveries VALUES (?,?,?,?,?,?,NULL)",

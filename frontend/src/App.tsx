@@ -18,6 +18,8 @@ const METRIC_KEYS = [
   "climate.anomaly",
   "food.eaten",
   "food.needed",
+  "stores.food",
+  "stores.wood",
 ];
 
 function initialLang(): Lang {
@@ -99,7 +101,7 @@ function Chronicle({ events, t, minImportance, setMinImportance, explain, extinc
   );
 }
 
-function Numbers({ stats, series, discoveries, peoples, lang, t }: { stats: Stats; series: Series; discoveries: Discovery[]; peoples: People[]; lang: Lang; t: Translate }) {
+function Numbers({ stats, series, discoveries, peoples, worldStores, lang, t }: { stats: Stats; series: Series; discoveries: Discovery[]; peoples: People[]; worldStores: { id: string; name: string; amount: number }[]; lang: Lang; t: Translate }) {
   const points = (key: string): Point[] => series[key] ?? [];
   const fed = useMemo(() => {
     const needed = new Map((series["food.needed"] ?? []).map((point) => [point.year, point.value]));
@@ -166,6 +168,27 @@ function Numbers({ stats, series, discoveries, peoples, lang, t }: { stats: Stat
         <Chart title={t("climateChart")} series={[{ name: t("climate"), colour: SERIES_COLOURS[1], points: climate }]} unit=" °C" digits={1} signed {...common} />
       </div>
 
+      <h2>{t("storesWorld")}</h2>
+      <p className="note">{t("storesNote")}</p>
+      <dl className="facts">
+        {worldStores.map((item) => (
+          <div key={item.id}>
+            <dt>{item.name}</dt>
+            <dd>{formatNumber(item.amount, lang)}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="charts">
+        <Chart
+          title={t("storesChart")}
+          series={[
+            { name: t("food"), colour: SERIES_COLOURS[0], points: points("stores.food") },
+            { name: t("wood"), colour: SERIES_COLOURS[1], points: points("stores.wood") },
+          ]}
+          {...common}
+        />
+      </div>
+
       <h2>{t("peoples")}</h2>
       <p className="note">{t("peoplesNote")}</p>
       <ul className="peoples">
@@ -186,6 +209,15 @@ function Numbers({ stats, series, discoveries, peoples, lang, t }: { stats: Stat
                 {item.ended_year === null ? `, ${item.clans} ${item.clans === 1 ? t("clansOne") : t("clans")}` : ` – ${item.ended_year}`}
                 {item.tiles ? `, ${formatNumber(item.tiles, lang)} ${t("tilesOfLand")}` : ""}, {t("sounds")} {item.consonants.split("").join(" ")} · {item.vowels.split("").join(" ")}
               </span>
+              {item.ended_year === null && Object.values(item.stores).some((amount) => amount > 0) ? (
+                <span className="state">
+                  {t("inStore")}:{" "}
+                  {Object.entries(item.stores)
+                    .filter(([, amount]) => amount > 0)
+                    .map(([good, amount]) => `${worldStores.find((entry) => entry.id === good)?.name ?? good} ${formatNumber(amount, lang)}`)
+                    .join(", ")}
+                </span>
+              ) : null}
             </li>
           );
         })}
@@ -211,7 +243,7 @@ function Numbers({ stats, series, discoveries, peoples, lang, t }: { stats: Stat
   );
 }
 
-function ClanDetail({ detail, t, onShow, onPerson, onClan }: { detail: Group; t: Translate; onShow: () => void; onPerson: (id: number) => void; onClan: (id: number) => void }) {
+function ClanDetail({ detail, t, lang, onShow, onPerson, onClan }: { detail: Group; t: Translate; lang: Lang; onShow: () => void; onPerson: (id: number) => void; onClan: (id: number) => void }) {
   return (
     <article className="detail">
       <h2>{detail.name}</h2>
@@ -222,6 +254,23 @@ function ClanDetail({ detail, t, onShow, onPerson, onClan }: { detail: Group; t:
       <button className="plain" onClick={onShow}>
         {t("showOnMap")}
       </button>
+      <h3>{t("stores")}</h3>
+      <ul className="stores">
+        {detail.stores.map((item) => (
+          <li key={item.id}>
+            <span className="name">{item.name}</span>
+            <span className="bar" aria-hidden="true">
+              <span style={{ width: `${item.room > 0 ? Math.min(100, (100 * item.amount) / item.room) : 0}%` }} />
+            </span>
+            <span className="count">{formatNumber(item.amount, lang)}</span>
+            <small>
+              {t("roomFor")} {formatNumber(item.room, lang)}. {t("lastYear")}: {t("gained")} {formatNumber(item.gained, lang)}, {t("usedUp")} {formatNumber(item.used, lang)}
+              {item.traded_in ? `, ${t("tradedIn")} ${formatNumber(item.traded_in, lang)}` : ""}
+              {item.traded_out ? `, ${t("tradedOut")} ${formatNumber(item.traded_out, lang)}` : ""}
+            </small>
+          </li>
+        ))}
+      </ul>
       {detail.partners.length > 0 ? (
         <>
           <h3>{t("tradesWith")}</h3>
@@ -306,6 +355,7 @@ export function App() {
   const [land, setLand] = useState<{ clans: number[]; peoples: number[] }>({ clans: [], peoples: [] });
   const [showLand, setShowLand] = useState(true);
   const [links, setLinks] = useState<TradeLink[]>([]);
+  const [worldStores, setWorldStores] = useState<{ id: string; name: string; amount: number }[]>([]);
   const [showTrade, setShowTrade] = useState(true);
   const [away, setAway] = useState<Since | null>(null);
   const seenChecked = useRef<number | null>(null);
@@ -389,6 +439,7 @@ export function App() {
       setPeoples(nextPeoples);
       setLand(await api.territory(worldId));
       setLinks(await api.trade(worldId));
+      setWorldStores(await api.stores(worldId, lang));
       setSteps(nextSteps.values);
       setSeries(nextSeries);
       setDiscoveries(nextDiscoveries);
@@ -544,7 +595,7 @@ export function App() {
           </aside>
         </div>
 
-        {view === "numbers" && stats ? <Numbers stats={stats} series={series} discoveries={discoveries} peoples={peoples} lang={lang} t={t} /> : null}
+        {view === "numbers" && stats ? <Numbers stats={stats} series={series} discoveries={discoveries} peoples={peoples} worldStores={worldStores} lang={lang} t={t} /> : null}
 
         {view === "clans" ? (
           <div className="page clans-page">
@@ -563,7 +614,7 @@ export function App() {
                 </li>
               ))}
             </ul>
-            {detail ? <ClanDetail detail={detail} t={t} onShow={() => showOnMap(detail.id)} onPerson={showPerson} onClan={setSelected} /> : <p className="note pick">{t("pickClan")}</p>}
+            {detail ? <ClanDetail detail={detail} t={t} lang={lang} onShow={() => showOnMap(detail.id)} onPerson={showPerson} onClan={setSelected} /> : <p className="note pick">{t("pickClan")}</p>}
           </div>
         ) : null}
       </main>

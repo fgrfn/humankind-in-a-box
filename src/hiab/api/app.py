@@ -159,6 +159,10 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
                 "SELECT COUNT(DISTINCT technology) FROM discoveries WHERE world_id = ?"
             ),
             "discoveries_possible": len(packs.technologies),
+            **{
+                f"stored_{good}": amount
+                for good, amount in sorted(store_totals(conn, world_id)[0].items())
+            },
             "trade_partnerships": one(
                 "SELECT COUNT(*) FROM trade_links WHERE world_id = ? AND ended IS NULL"
             ),
@@ -267,6 +271,7 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
         for held in held_land(conn, world_id)[1]:
             if held:
                 land[held] = land.get(held, 0) + 1
+        kept = store_totals(conn, world_id)
         rows = _rows(conn, "SELECT * FROM cultures WHERE world_id = ? ORDER BY id", (world_id,))
         names = {row["id"]: row["name"] for row in rows}
         out = []
@@ -285,6 +290,7 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
                     "settlements": 0 if alive is None else alive["settlements"],
                     "population": heads.get(row["id"], 0),
                     "tiles": land.get(row["id"], 0),
+                    "stores": dict(sorted(kept.get(row["id"], {}).items())),
                     "consonants": sounds["c"],
                     "vowels": sounds["v"],
                     "words": json.loads(row["words"]),
@@ -350,6 +356,18 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
         ).fetchone()
         clans = _layer(found["data"])
         return clans, [0] * len(clans) if held is None else _layer(held["data"])
+
+    @api.get("/worlds/{world_id}/stores")
+    def stores(world_id: int, conn: Db, lang: Lang = default_language) -> list[dict[str, Any]]:
+        """What the whole world keeps in store, food first."""
+        world_row(conn, world_id)
+        return [
+            {"id": good, "name": good_name(good, lang), "amount": amount}
+            for good, amount in sorted(
+                store_totals(conn, world_id)[0].items(),
+                key=lambda item: (item[0] != "food", item[0]),
+            )
+        ]
 
     @api.get("/worlds/{world_id}/trade")
     def trade(world_id: int, conn: Db) -> list[dict[str, Any]]:
@@ -450,6 +468,52 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
         clans, peoples_held = held_land(conn, world_id)
         return {"clans": clans, "peoples": peoples_held}
 
+    def good_name(good: str, language: Language) -> str:
+        if good == "food":
+            return "Nahrung" if language == "de" else "Food"
+        resource = packs.resources.get(good)
+        return good if resource is None else getattr(resource.name, language)
+
+    def stores_out(raw: str, language: Language) -> list[dict[str, Any]]:
+        """A clan's stores: food first, then every good it has or had movement in last year."""
+        kept = json.loads(raw) if raw else {}
+        goods: dict[str, int] = {"food": kept.get("food", 0), **kept.get("goods", {})}
+        last = kept.get("last_year", {})
+        out: list[dict[str, Any]] = []
+        for good in ["food", *sorted(set(goods) | set(last) - {"food"})]:
+            if good in [item["id"] for item in out]:
+                continue
+            gained, used, traded_in, traded_out = last.get(good, [0, 0, 0, 0])
+            out.append(
+                {
+                    "id": good,
+                    "name": good_name(good, language),
+                    "amount": goods.get(good, 0),
+                    "room": kept.get("food_room" if good == "food" else "room", 0),
+                    "gained": gained,
+                    "used": used,
+                    "traded_in": traded_in,
+                    "traded_out": traded_out,
+                }
+            )
+        return out
+
+    def store_totals(conn: sqlite3.Connection, world_id: int) -> dict[int, dict[str, int]]:
+        """What all living clans keep, summed per people; people 0 is the whole world."""
+        totals: dict[int, dict[str, int]] = {0: {}}
+        for row in _rows(
+            conn,
+            "SELECT culture, stores FROM groups WHERE world_id = ? AND dissolved IS NULL "
+            "ORDER BY id",
+            (world_id,),
+        ):
+            kept = json.loads(row["stores"]) if row["stores"] else {}
+            for good, amount in [("food", kept.get("food", 0)), *kept.get("goods", {}).items()]:
+                for scope in (0, row["culture"]):
+                    bucket = totals.setdefault(scope, {})
+                    bucket[good] = bucket.get(good, 0) + amount
+        return totals
+
     def group_out(conn: sqlite3.Connection, row: sqlite3.Row, language: Language) -> dict[str, Any]:
         place = None
         buildings: list[dict[str, Any]] = []
@@ -489,6 +553,7 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             "settled": bool(row["settled"]),
             "place": place,
             "buildings": buildings,
+            "stores": stores_out(row["stores"], language),
             "partners": [
                 {"id": link["id"], "name": link["name"], "since_year": link["since"] // 360}
                 for link in _rows(

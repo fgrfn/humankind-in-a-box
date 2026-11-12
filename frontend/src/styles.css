@@ -243,3 +243,12 @@ button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 
 /* The colour a people has on the map, next to its name. */
 .chip { display: inline-block; width: 11px; height: 11px; margin-right: 8px; transform: rotate(45deg); border: 1px solid var(--deep); vertical-align: 1px; }
+
+/* A clan's stores: how full, and what came and went last year. */
+.stores { list-style: none; margin: 0 0 22px; padding: 0; border-top: 1px solid var(--line); }
+.stores li { display: grid; grid-template-columns: minmax(80px, 130px) 1fr 70px; gap: 3px 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.stores .name { color: var(--chalk); }
+.stores .bar { height: 8px; background: var(--deep); border-radius: 0 4px 4px 0; overflow: hidden; }
+.stores .bar span { display: block; height: 100%; background: #b98a2e; }
+.stores .count { text-align: right; font-variant-numeric: tabular-nums; color: var(--chalk); }
+.stores small { grid-column: 1 / -1; color: var(--muted); font-size: 14px; line-height: 1.35; }
