@@ -29,6 +29,7 @@ storage_pit:
   work: 10
   per_people: 20
   storage_months: 2
+  storage_units: 60
 kiln:
   name: {de: Töpferofen, en: Kiln}
   requires: [pottery]
@@ -43,6 +44,7 @@ granary:
   work: 12
   per_people: 40
   storage_months: 3
+  storage_units: 150
 well:
   name: {de: Brunnen, en: Well}
   requires: [wells]

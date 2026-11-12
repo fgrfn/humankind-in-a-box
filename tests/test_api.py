@@ -184,6 +184,9 @@ def test_people_and_what_they_do(client: TestClient) -> None:
         "searching for food",
         "building: Gathering fire",
         "building: Hut",
+        "fetching wood",
+        "collecting flint",
+        "gathering salt",
     }
     detail = client.get(f"/api/v1/worlds/1/persons/{working[0]['id']}").json()
     assert detail["activity"] == working[0]["activity"]
@@ -237,3 +240,26 @@ def test_trade_and_since_summary(client: TestClient) -> None:
     assert len(summary["highlights"]) <= 8
     assert all(item["importance"] >= 3 and item["year"] >= 20 for item in summary["highlights"])
     assert client.get("/api/v1/worlds/1/since").status_code == 422
+
+
+def test_stores_are_shown_per_clan_people_and_world(client: TestClient) -> None:
+    groups = client.get("/api/v1/worlds/1/groups").json()
+    totals: dict[str, int] = {}
+    for group in groups:
+        goods = {item["id"]: item for item in group["stores"]}
+        assert "food" in goods and goods["food"]["name"] == "Nahrung"
+        for item in group["stores"]:
+            assert item["amount"] >= 0 and item["room"] >= 0
+            assert min(item["gained"], item["used"], item["traded_in"], item["traded_out"]) >= 0
+            totals[item["id"]] = totals.get(item["id"], 0) + item["amount"]
+    assert totals.get("wood", 0) > 0, "somebody has wood in store after 60 years"
+    stats = client.get("/api/v1/worlds/1/stats").json()
+    world = client.get("/api/v1/worlds/1/stores").json()
+    assert world[0]["id"] == "food"
+    for item in world:
+        assert item["amount"] == totals[item["id"]] == stats[f"stored_{item['id']}"]
+    peoples = client.get("/api/v1/worlds/1/peoples").json()
+    for good, amount in totals.items():
+        assert sum(item["stores"].get(good, 0) for item in peoples) == amount
+    keys = client.get("/api/v1/worlds/1/metric-keys").json()
+    assert "stores.food" in keys and "stores.wood" in keys

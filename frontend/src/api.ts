@@ -87,6 +87,7 @@ export interface Group {
   technologies: Technology[];
   buildings: Building[];
   partners: { id: number; name: string; since_year: number }[];
+  stores: Store[];
   members?: { id: number; name: string; sex: "f" | "m"; age: number; children: number; activity: string; activity_text: string }[];
 }
 
@@ -101,9 +102,21 @@ export interface People {
   settlements: number;
   population: number;
   tiles: number;
+  stores: Record<string, number>;
   consonants: string;
   vowels: string;
   words: Record<string, string>;
+}
+
+export interface Store {
+  id: string;
+  name: string;
+  amount: number;
+  room: number;
+  gained: number;
+  used: number;
+  traded_in: number;
+  traded_out: number;
 }
 
 export interface TradeLink {
@@ -216,6 +229,7 @@ export const api = {
   stats: (world: number, lang: Lang) => get<Stats>(`/worlds/${world}/stats?lang=${lang}`),
   map: (world: number) => get<WorldMap>(`/worlds/${world}/map`),
   steps: (world: number) => get<{ values: number[] }>(`/worlds/${world}/layers/steps`),
+  stores: (world: number, lang: Lang) => get<{ id: string; name: string; amount: number }[]>(`/worlds/${world}/stores?lang=${lang}`),
   trade: (world: number) => get<TradeLink[]>(`/worlds/${world}/trade`),
   since: (world: number, year: number, lang: Lang) => get<Since>(`/worlds/${world}/since?year=${year}&lang=${lang}`),
   territory: (world: number) => get<{ clans: number[]; peoples: number[] }>(`/worlds/${world}/territory`),

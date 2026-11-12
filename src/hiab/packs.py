@@ -78,6 +78,10 @@ class Resource(_Model):
     # what somebody is doing who goes out for this resource, for display
     work: Text | None = None
     harvest_base_percent: int = Field(0, ge=0, le=300)
+    # Stores: how many units one person brings home in a month of going out for
+    # it (0: nobody stores it), and what a clan must know to do so.
+    gather_per_worker: int = Field(0, ge=0, le=100000)
+    gather_requires: list[str] = Field(default_factory=list)
     # deposit: chance per land tile of that biome, in permille
     occurrence_permille: dict[str, int] = Field(default_factory=dict)
 
@@ -130,6 +134,7 @@ class Building(_Model):
     houses: int = Field(0, ge=0, le=1000)  # people one of these gives a home to
     per_people: int = Field(0, ge=0, le=100000)  # one more of these per this many people
     storage_months: int = Field(0, ge=0, le=60)
+    storage_units: int = Field(0, ge=0, le=1000000)  # room for this much more of every good
     mortality_percent: int = Field(100, ge=10, le=200)
 
 
@@ -197,6 +202,13 @@ class LifeParams(_Model):
     trade_partners_max: int = Field(3, ge=0, le=100)
     trade_walkers_per_year: int = Field(6, ge=0, le=10000)
     trade_learning_factor: float = Field(3.0, ge=1.0, le=100.0)
+    # Stores. Besides food a clan keeps goods: wood and what it digs up. When
+    # nobody is hungry a share of the adults goes out for them. Room is limited
+    # by heads and by storage buildings. Crafts use up a little every year, and
+    # partners pass on what one has plenty of and the other lacks.
+    gatherers_share_percent: int = Field(15, ge=0, le=100)
+    store_per_adult: int = Field(30, ge=0, le=100000)
+    craft_use_per_year: int = Field(3, ge=0, le=100000)
 
 
 class PackSet(_Model):

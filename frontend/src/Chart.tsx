@@ -53,7 +53,9 @@ export function Chart({ title, series, lang, unit = "", digits = 0, fixedMax, si
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const height = 190;
-  const pad = { left: 46, right: 14, top: 12, bottom: 24 };
+  // Room on the left for the axis labels: more when the numbers are long.
+  const peak = Math.max(0, ...series.flatMap((item) => item.points.map((point) => Math.abs(point.value))));
+  const pad = { left: peak >= 1e6 ? 76 : peak >= 1e5 ? 64 : peak >= 1e4 ? 54 : 46, right: 14, top: 12, bottom: 24 };
 
   const model = useMemo(() => {
     const years = series[0]?.points.map((point) => point.year) ?? [];

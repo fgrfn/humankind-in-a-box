@@ -28,6 +28,8 @@ fish:
   season_percent: {spring: 130, summer: 120, autumn: 90, winter: 50}
 wood:
   kind: stock
+  work: {de: holt Holz, en: fetching wood}
+  gather_per_worker: 12
   name: {de: Holz, en: Wood}
   capacity: {taiga: 800, forest: 1000, grassland: 150, marsh: 300, steppe: 60, tundra: 40, mountain: 200}
   regrowth_percent_per_month: 2
@@ -46,25 +48,41 @@ soil:
 # Deposits are placed once when the world is generated.
 flint:
   kind: deposit
+  work: {de: sucht Feuerstein, en: collecting flint}
+  gather_per_worker: 5
   name: {de: Feuerstein, en: Flint}
   occurrence_permille: {mountain: 60, steppe: 25, grassland: 15, forest: 10, tundra: 15}
 clay:
   kind: deposit
+  work: {de: sticht Lehm, en: digging clay}
+  gather_per_worker: 8
+  gather_requires: [pottery]
   name: {de: Lehm, en: Clay}
   occurrence_permille: {marsh: 80, grassland: 30, forest: 15, steppe: 15}
 copper_ore:
   kind: deposit
+  work: {de: bricht Kupfererz, en: mining copper ore}
+  gather_per_worker: 3
+  gather_requires: [copper_working]
   name: {de: Kupfererz, en: Copper ore}
   occurrence_permille: {mountain: 35, steppe: 5}
 tin_ore:
   kind: deposit
+  work: {de: bricht Zinnerz, en: mining tin ore}
+  gather_per_worker: 2
+  gather_requires: [bronze]
   name: {de: Zinnerz, en: Tin ore}
   occurrence_permille: {mountain: 12}
 iron_ore:
   kind: deposit
+  work: {de: bricht Eisenerz, en: mining iron ore}
+  gather_per_worker: 3
+  gather_requires: [iron_working]
   name: {de: Eisenerz, en: Iron ore}
   occurrence_permille: {mountain: 40, taiga: 8, marsh: 10}
 salt:
   kind: deposit
+  work: {de: gewinnt Salz, en: gathering salt}
+  gather_per_worker: 4
   name: {de: Salz, en: Salt}
   occurrence_permille: {desert: 50, steppe: 15, mountain: 10}

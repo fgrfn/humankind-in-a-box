@@ -67,6 +67,11 @@ class Clan:
     language: dict[str, str]
     culture: int = 0  # the people the clan belongs to
     partners: dict[int, int] = field(default_factory=dict)  # trading partner -> since tick
+    # Goods besides food, by resource. And what came and went this year and
+    # last, by good ("food" included): [gained, used, traded in, traded out].
+    stores: dict[str, int] = field(default_factory=dict)
+    flows: dict[str, list[int]] = field(default_factory=dict)
+    last_flows: dict[str, list[int]] = field(default_factory=dict)
     members: list[int] = field(default_factory=list)
     techs: dict[str, int] = field(default_factory=dict)
     food: int = 0
@@ -146,6 +151,11 @@ class Society:
         self.retired: dict[int, Clan] = {}  # clans dissolved since the last save
         self.dead: dict[int, Person] = {}  # people who died since the last save
         self.vanished: set[int] = set()  # ruins that disappeared since the last save
+        self.good_ids = sorted(
+            rid
+            for rid, resource in world.packs.resources.items()
+            if resource.gather_per_worker > 0 and resource.food_value == 0
+        )
         self._effort: dict[int, int] = {}  # this month's building work per clan
 
     # ---- small helpers --------------------------------------------------
@@ -498,6 +508,7 @@ class Society:
         self.send_out(clan, foragers, takes or foods, raws, area)
 
         clan.food += gathered
+        self.flow(clan, "food", 0, gathered)
         if clan.food < need:
             # Trading partners with more than they need this month help out.
             for partner_id in sorted(clan.partners):
@@ -510,11 +521,15 @@ class Society:
                     continue
                 partner.food -= given
                 clan.food += given
+                self.flow(clan, "food", 2, given)
+                self.flow(partner, "food", 3, given)
                 world.count("trade.food", given)
                 if clan.food >= need:
                     break
         eaten = min(clan.food, need)
-        clan.food = min(clan.food - eaten, capacity)
+        spoiled = max(0, clan.food - eaten - capacity)  # what there is no room to keep
+        clan.food = clan.food - eaten - spoiled
+        self.flow(clan, "food", 1, eaten + spoiled)
         clan.unmet.append(100 - eaten * 100 // need)
         if len(clan.unmet) > 12:
             del clan.unmet[0]
@@ -545,6 +560,7 @@ class Society:
             place = self.places[clan.place]
             site = next((b for b in place["buildings"] if b["state"] == "site"), None)
         hungry = (clan.unmet[-1] if clan.unmet else 0) >= 20
+        adults = self.fetch_goods(clan, adults)
         if site is None or hungry or len(adults) < 2:
             return [], adults
         count = max(1, len(adults) * self.p.builders_share_percent // 100)
@@ -555,6 +571,88 @@ class Society:
         self.set_work(builders, f"build:{site['type']}", site["y"], site["x"])
         self.walk(clan.y, clan.x, site["y"], site["x"], len(builders))
         return builders, [person for person in adults if person.id not in chosen]
+
+    def flow(self, clan: Clan, good: str, column: int, amount: int) -> None:
+        """Book what came or went: 0 gained, 1 used, 2 traded in, 3 traded out."""
+        if amount > 0:
+            clan.flows.setdefault(good, [0, 0, 0, 0])[column] += amount
+
+    def room(self, clan: Clan) -> int:
+        """How much of each good a clan can keep: by heads, and by what it has built for storing."""
+        units = self.p.store_per_adult * len(self.adults(clan))
+        if clan.settled:
+            buildings = self.world.packs.buildings
+            for building in self.places[clan.place]["buildings"]:
+                if building["state"] == "standing" and building["type"] in buildings:
+                    units += buildings[building["type"]].storage_units
+        return units
+
+    def fetch_goods(self, clan: Clan, adults: list[Person]) -> list[Person]:
+        """When nobody is hungry, some adults go out for wood and for what can be dug up.
+
+        They fetch what the clan has least of, as much as there is room for.
+        Returns the adults who are left for building and foraging.
+        """
+        world, p = self.world, self.p
+        if (clan.unmet[-1] if clan.unmet else 0) >= 10 or len(adults) < 4:
+            return adults
+        count = len(adults) * p.gatherers_share_percent // 100
+        if count <= 0:
+            return adults
+        room = self.room(clan)
+        area = self.window(clan.y, clan.x, self.radius(clan))
+        found = set(self.goods(clan))
+        wanted: list[tuple[int, str]] = []
+        for rid in self.good_ids:
+            resource = world.packs.resources[rid]
+            if any(tech not in clan.techs for tech in resource.gather_requires):
+                continue
+            have = clan.stores.get(rid, 0)
+            if have >= room:
+                continue
+            if resource.kind == "deposit":
+                if rid not in found:
+                    continue
+            elif int(world.stocks[rid][area].sum()) <= 0:
+                continue
+            wanted.append((have, rid))
+        if not wanted:
+            return adults
+        wanted.sort()
+        crews: dict[str, list[Person]] = {}
+        going = adults[-count:]  # the youngest adults fetch and carry
+        for index, person in enumerate(going):
+            crews.setdefault(wanted[index % len(wanted)][1], []).append(person)
+        for rid in sorted(crews):
+            crew = crews[rid]
+            resource = world.packs.resources[rid]
+            amount = min(len(crew) * resource.gather_per_worker, room - clan.stores.get(rid, 0))
+            if resource.kind == "deposit":
+                index = world.map.deposit_ids.index(rid)
+                wide = self.window(clan.y, clan.x, p.forage_radius + 2)
+                ys, xs = np.nonzero(world.map.deposit[wide] == index)
+                gaps = np.maximum(
+                    np.abs(ys + wide[0].start - clan.y), np.abs(xs + wide[1].start - clan.x)
+                )
+                nearest = int(np.argmin(gaps))
+                y, x = int(ys[nearest]) + wide[0].start, int(xs[nearest]) + wide[1].start
+            else:
+                stock = world.stocks[rid][area].astype(np.int64)
+                total = int(stock.sum())
+                amount = min(amount, total // 4)  # never strip the land bare
+                taken = stock * amount // max(1, total)
+                world.stocks[rid][area] = (stock - taken).astype(np.int32)
+                amount = int(taken.sum())
+                ty, tx = divmod(int(np.argmax(stock)), stock.shape[1])
+                y, x = area[0].start + ty, area[1].start + tx
+            clan.stores[rid] = clan.stores.get(rid, 0) + amount
+            self.flow(clan, rid, 0, amount)
+            world.count(f"goods.{rid}.gathered", amount)
+            self.set_work(crew, rid, y, x)
+            self.walk(clan.y, clan.x, y, x, len(crew))
+        self.dirty_clans.add(clan.id)
+        gone = {person.id for person in going}
+        return [person for person in adults if person.id not in gone]
 
     def set_work(self, people: list[Person], activity: str, y: int, x: int) -> None:
         kind = activity.split(":", 1)[0]
@@ -794,7 +892,7 @@ class Society:
             area = self.window(clan.y, clan.x, self.p.forage_radius)
             return bool((world.capacity[resource_id][area] > 0).any())
         if resource_id in world.map.deposit_ids:
-            if resource_id in self.goods(clan):
+            if clan.stores.get(resource_id, 0) > 0 or resource_id in self.goods(clan):
                 return True
             # What a trading partner has within reach can be had from them.
             return any(
@@ -1024,12 +1122,62 @@ class Society:
                 data={"tech": tech_id, "clan": clan.name, "clan_id": clan.id},
             )
 
+    def year_of_goods(self, clan: Clan) -> None:
+        """Close the year's books, use up what the crafts need, and pass goods between partners."""
+        world, p = self.world, self.p
+        clan.last_flows = {good: list(clan.flows[good]) for good in sorted(clan.flows)}
+        clan.flows = {}
+        room = self.room(clan)
+        needs: set[str] = set()
+        for tech_id in sorted(clan.techs):
+            tech = world.packs.technologies.get(tech_id)
+            if tech is not None:
+                needs.update(rid for rid in tech.needs_nearby if rid in self.good_ids)
+        for rid in sorted(needs):
+            used = min(clan.stores.get(rid, 0), p.craft_use_per_year)
+            if used > 0:
+                clan.stores[rid] -= used
+                self.flow(clan, rid, 1, used)
+                world.count(f"goods.{rid}.used", used)
+        # What there is no longer room for is lost (a smaller clan keeps less).
+        for rid in sorted(clan.stores):
+            over = clan.stores[rid] - room
+            if over > 0:
+                clan.stores[rid] = room
+                self.flow(clan, rid, 1, over)
+        # Partners: who has plenty passes on to who has little and a use for it.
+        wants = needs | {
+            rid
+            for building in world.packs.buildings.values()
+            if all(tech in clan.techs for tech in building.requires)
+            for rid in building.materials
+        }
+        for partner_id in sorted(clan.partners):
+            partner = self.clans.get(partner_id)
+            if partner is None:
+                continue
+            partner_room = self.room(partner)
+            for rid in sorted(wants):
+                have = clan.stores.get(rid, 0)
+                spare = partner.stores.get(rid, 0) - partner_room // 2
+                given = min(spare, room // 4 - have)
+                if given <= 0:
+                    continue
+                partner.stores[rid] -= given
+                clan.stores[rid] = have + given
+                self.flow(clan, rid, 2, given)
+                self.flow(partner, rid, 3, given)
+                world.count(f"trade.goods.{rid}", given)
+                self.dirty_clans.add(partner.id)
+        self.dirty_clans.add(clan.id)
+
     def clan_year(self, clan: Clan) -> None:
         world, p = self.world, self.p
         packs = world.packs
         adults = self.adults(clan)
         if not adults:
             return
+        self.year_of_goods(clan)
 
         for tech_id in sorted(packs.technologies):
             if tech_id in clan.techs:
@@ -1144,6 +1292,8 @@ class Society:
                     self.dirty_persons.add(person_id)
                 host.members.sort()
                 host.food += clan.food
+                for rid in sorted(clan.stores):
+                    host.stores[rid] = host.stores.get(rid, 0) + clan.stores[rid]
                 self.dirty_clans.add(host.id)
                 self.dissolve(clan, "clan_merged", {"host": host.name, "host_id": host.id})
 
@@ -1239,18 +1389,17 @@ class Society:
             if kind is None:
                 return
             definition = packs.buildings[kind]
-            area = self.window(place["y"], place["x"], self.radius(clan))
             for resource in sorted(definition.materials):
-                if int(world.stocks[resource][area].sum()) < 2 * definition.materials[resource]:
-                    return  # not enough material within reach
+                if clan.stores.get(resource, 0) < definition.materials[resource]:
+                    return  # not enough of it in store yet
             if not world.roll("build.start", "group", clan.id, p.build_start_chance_per_month, []):
                 return
             for resource in sorted(definition.materials):
-                stock = world.stocks[resource][area].astype(np.int64)
-                total = int(stock.sum())
-                taken = stock * definition.materials[resource] // total
-                world.stocks[resource][area] = (stock - taken).astype(np.int32)
-                world.count(f"materials.{resource}.used", int(taken.sum()))
+                needed = definition.materials[resource]
+                clan.stores[resource] -= needed
+                self.flow(clan, resource, 1, needed)
+                world.count(f"materials.{resource}.used", needed)
+            self.dirty_clans.add(clan.id)
             y, x = self.building_spot(place)
             place["buildings"].append(
                 {
@@ -1468,6 +1617,10 @@ class Society:
         share = clan.food * len(movers) // max(1, len(movers) + len(clan.members))
         clan.food -= share
         new.food = share
+        for rid in sorted(clan.stores):
+            part = clan.stores[rid] * len(movers) // max(1, len(movers) + len(clan.members))
+            clan.stores[rid] -= part
+            new.stores[rid] = part
         new.unmet = list(clan.unmet)
         self.walk(clan.y, clan.x, new.y, new.x, len(movers))
         self.dirty_clans.add(clan.id)
@@ -1618,6 +1771,15 @@ class Society:
                 (tick, "people.population", "culture", culture_id, float(by_culture[culture_id]))
             )
         rows.append((tick, "peoples.count", "world", 0, float(len(by_culture))))
+        kept: dict[tuple[int, str], int] = {}
+        for clan_id in sorted(self.clans):
+            clan = self.clans[clan_id]
+            for good, amount in [("food", clan.food), *sorted(clan.stores.items())]:
+                kept[(clan.culture, good)] = kept.get((clan.culture, good), 0) + amount
+                kept[(0, good)] = kept.get((0, good), 0) + amount
+        for (culture_id, good), amount in sorted(kept.items()):
+            scope = "world" if culture_id == 0 else "culture"
+            rows.append((tick, f"stores.{good}", scope, culture_id, float(amount)))
         links = sum(len(clan.partners) for clan in self.clans.values()) // 2
         rows.append((tick, "trade.partnerships", "world", 0, float(links)))
         held = np.bincount(self.land_people.ravel(), minlength=self.next_culture + 1)
@@ -1702,6 +1864,9 @@ class Society:
                     "language": c.language,
                     "culture": c.culture,
                     "partners": {str(k): c.partners[k] for k in sorted(c.partners)},
+                    "stores": dict(sorted(c.stores.items())),
+                    "flows": dict(sorted(c.flows.items())),
+                    "last_flows": dict(sorted(c.last_flows.items())),
                     "techs": dict(sorted(c.techs.items())),
                     "food": c.food,
                     "unmet": c.unmet,
@@ -1741,6 +1906,9 @@ class Society:
                 language=dict(raw["language"]),
                 culture=raw.get("culture", 0),
                 partners={int(k): v for k, v in raw.get("partners", {}).items()},
+                stores=dict(raw.get("stores", {})),
+                flows={k: list(v) for k, v in raw.get("flows", {}).items()},
+                last_flows={k: list(v) for k, v in raw.get("last_flows", {}).items()},
                 techs=dict(raw["techs"]),
                 food=raw["food"],
                 unmet=list(raw["unmet"]),
