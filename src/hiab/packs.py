@@ -176,6 +176,12 @@ class LifeParams(_Model):
     # lost what a craft needs, can forget what nothing else it knows builds on.
     knowledge_keepers: int = Field(6, ge=0, le=1000)
     knowledge_loss_chance_per_year: float = Field(0.03, ge=0.0, le=1.0)
+    # Peoples. A clan whose speech has moved this many sounds away from that of
+    # its people may found a people of its own; a clan alone among strangers may
+    # join them.
+    people_sound_distance: int = Field(3, ge=1, le=20)
+    people_emerge_chance_per_year: float = Field(0.004, ge=0.0, le=1.0)
+    people_join_chance_per_year: float = Field(0.01, ge=0.0, le=1.0)
 
 
 class PackSet(_Model):

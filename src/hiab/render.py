@@ -41,3 +41,35 @@ def calendar(tick: int) -> dict[str, Any]:
 def date_label(tick: int) -> str:
     when = calendar(tick)
     return f"{when['year']:>5}-{when['month']:02}-{when['day']:02}"
+
+
+# What the land is called where a place is named after it. Deposits and other
+# resources take their names from the data pack.
+LAND_WORDS: dict[str, dict[str, str]] = {
+    "river": {"de": "Fluss", "en": "river"},
+    "water": {"de": "Wasser", "en": "water"},
+    "ocean": {"de": "Meer", "en": "sea"},
+    "coast": {"de": "Küste", "en": "coast"},
+    "tundra": {"de": "Kältesteppe", "en": "tundra"},
+    "taiga": {"de": "Nadelwald", "en": "pine forest"},
+    "forest": {"de": "Wald", "en": "forest"},
+    "grassland": {"de": "Grasland", "en": "grassland"},
+    "steppe": {"de": "Steppe", "en": "steppe"},
+    "desert": {"de": "Wüste", "en": "desert"},
+    "mountain": {"de": "Berg", "en": "mountain"},
+    "marsh": {"de": "Sumpf", "en": "marsh"},
+}
+
+
+def meaning_text(packs: PackSet, meaning: str, language: str) -> str:
+    """What a place name means, e.g. "place by the river"."""
+    if not meaning:
+        return ""
+    resource = packs.resources.get(meaning)
+    if resource is not None:
+        word = getattr(resource.name, language)
+    elif meaning in LAND_WORDS:
+        word = LAND_WORDS[meaning][language]
+    else:
+        return ""
+    return f"Ort: {word}" if language == "de" else f"place: {word}"

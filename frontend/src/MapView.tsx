@@ -64,6 +64,17 @@ const BUILDING_SPRITES: Record<string, string> = {
   well: "storage_pit",
 };
 
+// Each people gets its own hue, spread round the colour wheel so neighbours in
+// the list differ clearly. There can be dozens, so colour never stands alone.
+function peopleColour(id: number): number {
+  const hue = ((id * 137.508) % 360) / 60;
+  const chroma = 0.62;
+  const x = chroma * (1 - Math.abs((hue % 2) - 1));
+  const [r, g, b] = [[chroma, x, 0], [x, chroma, 0], [0, chroma, x], [0, x, chroma], [x, 0, chroma], [chroma, 0, x]][Math.floor(hue) % 6];
+  const lift = 0.32;
+  return (Math.round((r + lift) * 255) << 16) | (Math.round((g + lift) * 255) << 8) | Math.round((b + lift) * 255);
+}
+
 // A fixed number per tile, so the same world always looks the same.
 function tileNoise(x: number, y: number, salt: number): number {
   let h = (x * 374761393 + y * 668265263 + salt * 2147483647) | 0;
@@ -680,6 +691,12 @@ export function MapView({ map, steps, groups, places, people, selected, focus, o
         label.position.set(0, -16);
         label.resolution = 3;
         marker.addChild(label);
+        // A small flag in the colour of the people the clan belongs to. The
+        // name of the people is in the clan's detail; the colour only groups.
+        const flag = new Graphics();
+        flag.poly([0, -3.2, 3.2, 0, 0, 3.2, -3.2, 0]).fill(peopleColour(group.people_id)).stroke({ color: 0x10242d, width: 1 });
+        flag.position.set(0, -12.5);
+        marker.addChild(flag);
         marker.eventMode = "static";
         marker.cursor = "pointer";
         marker.hitArea = { contains: (x: number, y: number) => Math.abs(x) < 12 && y > -24 && y < 6 };

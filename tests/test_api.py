@@ -191,3 +191,19 @@ def test_people_and_what_they_do(client: TestClient) -> None:
     assert sum(entry["months"] for entry in detail["work_months"]) > 0
     group = client.get(f"/api/v1/worlds/1/groups/{working[0]['clan']}").json()
     assert any(member["activity_text"] for member in group["members"])
+
+
+def test_peoples_are_listed_with_descent(client: TestClient) -> None:
+    peoples = client.get("/api/v1/worlds/1/peoples").json()
+    assert peoples and peoples[0]["population"] >= peoples[-1]["population"]
+    first = next(item for item in peoples if item["parent_id"] == 0)
+    assert first["founded_year"] == 0 and first["parent"] is None
+    assert len(first["consonants"]) == 8 and 3 <= len(first["vowels"]) <= 4
+    stats = client.get("/api/v1/worlds/1/stats").json()
+    assert stats["peoples"] == sum(1 for item in peoples if item["clans"] > 0)
+    assert sum(item["population"] for item in peoples) == stats["population"]
+    names = {item["name"] for item in peoples}
+    groups = client.get("/api/v1/worlds/1/groups").json()
+    assert all(group["people"] in names for group in groups)
+    german = client.get("/api/v1/worlds/1/places").json()
+    assert all(place["meaning"].startswith("Ort: ") for place in german)

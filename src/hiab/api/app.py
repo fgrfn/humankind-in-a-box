@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from hiab import __version__
 from hiab.packs import BIOMES, PackSet
-from hiab.render import calendar, render_event
+from hiab.render import calendar, meaning_text, render_event
 
 Language = Literal["de", "en"]
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
@@ -159,6 +159,10 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
                 "SELECT COUNT(DISTINCT technology) FROM discoveries WHERE world_id = ?"
             ),
             "discoveries_possible": len(packs.technologies),
+            "peoples": one(
+                "SELECT COUNT(DISTINCT culture) FROM groups "
+                "WHERE world_id = ? AND dissolved IS NULL"
+            ),
             "births_total": total("people.births"),
             "deaths_total": total("people.deaths"),
             "migrations_total": total("clans.migrations"),
@@ -232,6 +236,55 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             else min(99, 100 * row["progress"] // max(1, known.work)),
         }
 
+    @api.get("/worlds/{world_id}/peoples")
+    def peoples(world_id: int, conn: Db) -> list[dict[str, Any]]:
+        """Every people that ever formed: descent, size, sounds and a few of its words."""
+        world_row(conn, world_id)
+        living = {
+            row["culture"]: row
+            for row in _rows(
+                conn,
+                "SELECT g.culture, COUNT(DISTINCT g.id) AS clans, "
+                "SUM(g.settled) AS settlements FROM groups g "
+                "WHERE g.world_id = ? AND g.dissolved IS NULL GROUP BY g.culture",
+                (world_id,),
+            )
+        }
+        heads = {
+            row["culture"]: row["n"]
+            for row in _rows(
+                conn,
+                "SELECT g.culture, COUNT(*) AS n FROM persons p "
+                "JOIN groups g ON g.world_id = p.world_id AND g.id = p.clan "
+                "WHERE p.world_id = ? AND p.died IS NULL GROUP BY g.culture",
+                (world_id,),
+            )
+        }
+        rows = _rows(conn, "SELECT * FROM cultures WHERE world_id = ? ORDER BY id", (world_id,))
+        names = {row["id"]: row["name"] for row in rows}
+        out = []
+        for row in rows:
+            sounds = json.loads(row["sound_rules"])
+            alive = living.get(row["id"])
+            out.append(
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "parent_id": row["parent_culture"],
+                    "parent": names.get(row["parent_culture"]),
+                    "founded_year": row["founded"] // 360,
+                    "ended_year": None if row["ended"] is None else row["ended"] // 360,
+                    "clans": 0 if alive is None else alive["clans"],
+                    "settlements": 0 if alive is None else alive["settlements"],
+                    "population": heads.get(row["id"], 0),
+                    "consonants": sounds["c"],
+                    "vowels": sounds["v"],
+                    "words": json.loads(row["words"]),
+                }
+            )
+        out.sort(key=lambda item: (-item["population"], item["id"]))
+        return out
+
     @api.get("/worlds/{world_id}/places")
     def places(world_id: int, conn: Db, lang: Lang = default_language) -> list[dict[str, Any]]:
         """Settlements, lived in or abandoned, with everything that stands there."""
@@ -250,6 +303,7 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
                 "founded_year": row["founded"] // 360,
                 "abandoned_year": None if row["abandoned"] is None else row["abandoned"] // 360,
                 "group_id": row["group_id"],
+                "meaning": meaning_text(packs, row["meaning"], lang),
                 "buildings": built.get(row["id"], []),
             }
             for row in _rows(
@@ -299,9 +353,15 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             "ORDER BY tick, technology",
             (row["world_id"], row["id"]),
         )
+        people = conn.execute(
+            "SELECT name FROM cultures WHERE world_id = ? AND id = ?",
+            (row["world_id"], row["culture"]),
+        ).fetchone()
         return {
             "id": row["id"],
             "name": row["name"],
+            "people_id": row["culture"],
+            "people": None if people is None else people["name"],
             "type": row["type"],
             "y": row["y"],
             "x": row["x"],

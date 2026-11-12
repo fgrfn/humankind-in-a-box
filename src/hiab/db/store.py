@@ -201,6 +201,22 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE discoveries ADD COLUMN lost INTEGER;
     """,
+    """
+    CREATE TABLE cultures (
+        world_id INTEGER NOT NULL,
+        id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        parent_culture INTEGER NOT NULL,
+        founded INTEGER NOT NULL,
+        ended INTEGER,
+        origin_group INTEGER NOT NULL,
+        sound_rules TEXT NOT NULL,
+        words TEXT NOT NULL,
+        PRIMARY KEY (world_id, id)
+    ) WITHOUT ROWID;
+    ALTER TABLE groups ADD COLUMN culture INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE places ADD COLUMN meaning TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -220,6 +236,7 @@ CONTENT_TABLES: dict[str, str] = {
     "places": "world_id, id",
     "tile_layers": "world_id, layer",
     "buildings": "world_id, id",
+    "cultures": "world_id, id",
 }
 
 
@@ -446,10 +463,28 @@ class Store:
                     clan.x,
                     int(clan.settled),
                     clan.place,
+                    clan.culture,
                 )
             )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?)", clan_rows
+            "INSERT OR REPLACE INTO cultures VALUES (?,?,?,?,?,?,?,?,?)",
+            [
+                (
+                    world.id,
+                    culture.id,
+                    culture.name,
+                    culture.parent,
+                    culture.founded,
+                    culture.ended,
+                    culture.origin,
+                    _json(culture.language),
+                    _json(dict(sorted(culture.words.items()))),
+                )
+                for culture in (society.cultures[cid] for cid in sorted(society.dirty_cultures))
+            ],
+        )
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
         )
         self.conn.executemany(
             "INSERT OR REPLACE INTO discoveries VALUES (?,?,?,?,?,?,NULL)",
@@ -466,7 +501,7 @@ class Store:
             ],
         )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO places VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO places VALUES (?,?,?,?,?,?,?,?,?)",
             [
                 (
                     world.id,
@@ -477,6 +512,7 @@ class Store:
                     place["founded"],
                     place["abandoned"],
                     place["group"],
+                    place.get("meaning", ""),
                 )
                 for place in (society.places[pid] for pid in sorted(society.dirty_places))
             ],
