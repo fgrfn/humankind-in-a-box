@@ -33,6 +33,13 @@ MANY_PEOPLES = (
     "life.people_join_chance_per_year: 0.2\n"
 )
 TRADERS = "technologies.fire.base_chance_per_year: 0.03\nlife.trade_chance_per_year: 0.5\n"
+RULERS = EARLY_FARMERS + (
+    "life.realm_min_adults: 4\n"
+    "life.realm_found_chance_per_year: 0.3\n"
+    "life.realm_join_chance_per_year: 0.5\n"
+    "life.realm_max_clans: 4\n"
+    "life.realm_break_on_succession: 0.5\n"
+)
 
 
 def world_with(settings: Settings, overrides: str) -> Settings:
@@ -144,7 +151,7 @@ def test_peoples_form_split_and_name_their_places(tmp_path: Path, settings: Sett
     assert len({place["name"] for place in places}) == len(places)
 
 
-@pytest.mark.parametrize("overrides", [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS])
+@pytest.mark.parametrize("overrides", [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS, RULERS])
 def test_such_worlds_resume_identically(tmp_path: Path, settings: Settings, overrides: str) -> None:
     prepared = world_with(settings, overrides)
     simulate(tmp_path / "straight.sqlite", prepared, 110, 5)
@@ -271,3 +278,36 @@ def test_stores_fill_are_bounded_and_books_balance(tmp_path: Path, settings: Set
             )
             now = clan.food if good == "food" else clan.stores.get(good, 0)
             assert now - before.get(good, 0) == change, good
+
+
+def test_clans_follow_leaders_and_gather_into_chiefdoms(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, RULERS), 160, 3)
+    society = world.society
+    assert society is not None
+    for clan in society.clans.values():
+        if clan.leader in society.persons:
+            assert society.persons[clan.leader].clan == clan.id, "a clan follows one of its own"
+    standing = {rid: r for rid, r in society.realms.items() if r.ended is None}
+    assert standing, "no chiefdom in a world built for them"
+    for realm in standing.values():
+        seat = society.clans[realm.seat]
+        assert seat.realm == realm.id
+        assert realm.ruler == seat.leader or seat.leader not in society.persons
+        members = [clan for clan in society.clans.values() if clan.realm == realm.id]
+        assert 1 <= len(members) <= 4
+    for clan in society.clans.values():
+        if clan.realm:
+            assert clan.realm in standing, "nobody belongs to a fallen chiefdom"
+
+    conn = sqlite3.connect(path)
+    kinds = {row[0] for row in conn.execute("SELECT DISTINCT type FROM events")}
+    assert {"realm_founded", "realm_joined"} <= kinds
+    saved = {row[0]: row[1] for row in conn.execute("SELECT id, ended FROM realms")}
+    assert set(saved) == set(society.realms)
+    assert {rid for rid, ended in saved.items() if ended is None} == set(standing)
+    in_db = {
+        row[0]: row[1]
+        for row in conn.execute("SELECT id, realm FROM groups WHERE dissolved IS NULL")
+    }
+    assert in_db == {clan.id: clan.realm for clan in society.clans.values()}

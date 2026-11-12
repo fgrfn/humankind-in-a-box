@@ -32,3 +32,16 @@ export function peopleColour(id: number): number {
 export function peopleCss(id: number): string {
   return `#${peopleColour(id).toString(16).padStart(6, "0")}`;
 }
+
+// Chiefdoms are shown on their own, never together with peoples, so they use
+// the same twelve colours. Chiefdoms founded close in time often lie side by
+// side, so consecutive ones step five places through the set: red, copper,
+// violet, bone, sky, blue, turquoise, yellow, purple, orange, pink, raspberry.
+// After twelve the colours come round again; the name is written on the land.
+export function realmColour(id: number): number {
+  return DISTINCT[(Math.max(1, id) * 5) % DISTINCT.length];
+}
+
+export function realmCss(id: number): string {
+  return `#${realmColour(id).toString(16).padStart(6, "0")}`;
+}

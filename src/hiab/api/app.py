@@ -191,6 +191,7 @@ def create_app(
                 "SELECT COUNT(DISTINCT culture) FROM groups "
                 "WHERE world_id = ? AND dissolved IS NULL"
             ),
+            "realms": one("SELECT COUNT(*) FROM realms WHERE world_id = ? AND ended IS NULL"),
             "births_total": total("people.births"),
             "deaths_total": total("people.deaths"),
             "migrations_total": total("clans.migrations"),
@@ -543,7 +544,79 @@ def create_app(
         """Who holds the land: per tile the clan and its people, row by row."""
         world_row(conn, world_id)
         clans, peoples_held = held_land(conn, world_id)
-        return {"clans": clans, "peoples": peoples_held}
+        of_realm = {
+            row["id"]: row["realm"]
+            for row in _rows(
+                conn,
+                "SELECT g.id, g.realm FROM groups g JOIN realms r "
+                "ON r.world_id = g.world_id AND r.id = g.realm "
+                "WHERE g.world_id = ? AND g.dissolved IS NULL AND r.ended IS NULL",
+                (world_id,),
+            )
+        }
+        realms_held = [of_realm.get(clan, 0) for clan in clans]
+        return {"clans": clans, "peoples": peoples_held, "realms": realms_held}
+
+    @api.get("/worlds/{world_id}/realms")
+    def realms(world_id: int, conn: Db) -> list[dict[str, Any]]:
+        """Chiefdoms, standing first: seat, ruler, people, clans, heads and land."""
+        world_row(conn, world_id)
+        clans, _ = held_land(conn, world_id)
+        members: dict[int, list[int]] = {}
+        for row in _rows(
+            conn,
+            "SELECT id, realm FROM groups WHERE world_id = ? AND dissolved IS NULL AND realm > 0 "
+            "ORDER BY id",
+            (world_id,),
+        ):
+            members.setdefault(row["realm"], []).append(row["id"])
+        heads = {
+            row["realm"]: row["n"]
+            for row in _rows(
+                conn,
+                "SELECT g.realm, COUNT(*) AS n FROM persons p "
+                "JOIN groups g ON g.world_id = p.world_id AND g.id = p.clan "
+                "WHERE p.world_id = ? AND p.died IS NULL AND g.realm > 0 GROUP BY g.realm",
+                (world_id,),
+            )
+        }
+        clan_realm = {clan: realm for realm, ids in members.items() for clan in ids}
+        land: dict[int, int] = {}
+        for clan in clans:
+            realm = clan_realm.get(clan)
+            if realm:
+                land[realm] = land.get(realm, 0) + 1
+        out = []
+        for row in _rows(
+            conn,
+            "SELECT r.*, g.name AS seat_name, p.name AS ruler_name, c.name AS people_name "
+            "FROM realms r "
+            "LEFT JOIN groups g ON g.world_id = r.world_id AND g.id = r.seat_group "
+            "LEFT JOIN persons p ON p.world_id = r.world_id AND p.id = r.ruler "
+            "LEFT JOIN cultures c ON c.world_id = r.world_id AND c.id = r.people "
+            "WHERE r.world_id = ? ORDER BY r.id",
+            (world_id,),
+        ):
+            standing = row["ended"] is None
+            out.append(
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "founded_year": row["founded"] // 360,
+                    "ended_year": None if standing else row["ended"] // 360,
+                    "seat_id": row["seat_group"],
+                    "seat": row["seat_name"],
+                    "ruler_id": row["ruler"],
+                    "ruler": row["ruler_name"],
+                    "people_id": row["people"],
+                    "people": row["people_name"],
+                    "clans": members.get(row["id"], []) if standing else [],
+                    "population": heads.get(row["id"], 0) if standing else 0,
+                    "tiles": land.get(row["id"], 0) if standing else 0,
+                }
+            )
+        out.sort(key=lambda item: (item["ended_year"] is not None, -item["population"], item["id"]))
+        return out
 
     def good_name(good: str, language: Language) -> str:
         if good == "food":
@@ -619,11 +692,28 @@ def create_app(
             "SELECT name FROM cultures WHERE world_id = ? AND id = ?",
             (row["world_id"], row["culture"]),
         ).fetchone()
+        leader = conn.execute(
+            "SELECT id, name FROM persons WHERE world_id = ? AND id = ?",
+            (row["world_id"], row["leader"]),
+        ).fetchone()
+        realm = conn.execute(
+            "SELECT id, name, seat_group FROM realms "
+            "WHERE world_id = ? AND id = ? AND ended IS NULL",
+            (row["world_id"], row["realm"]),
+        ).fetchone()
         return {
             "id": row["id"],
             "name": row["name"],
             "people_id": row["culture"],
             "people": None if people is None else people["name"],
+            "leader": None if leader is None else {"id": leader["id"], "name": leader["name"]},
+            "realm": None
+            if realm is None
+            else {
+                "id": realm["id"],
+                "name": realm["name"],
+                "seat": realm["seat_group"] == row["id"],
+            },
             "type": row["type"],
             "y": row["y"],
             "x": row["x"],

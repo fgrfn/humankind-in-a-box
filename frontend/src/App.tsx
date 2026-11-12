@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, NeedsToken, type Speed, type FamilyTree, type TreePerson, type Discovery, type Group, type Human, type Lang, type People, type Since, type TradeLink, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
+import { api, NeedsToken, type Speed, type FamilyTree, type TreePerson, type Discovery, type Group, type Human, type Lang, type Land, type People, type Realm, type Since, type TradeLink, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
 import { Chart, SERIES_COLOURS, type Point } from "./Chart";
 import { HistoryBand, type Mark } from "./HistoryBand";
 import { formatNumber, translator, type TextKey } from "./i18n";
-import { peopleCss } from "./colours";
+import { peopleCss, realmCss } from "./colours";
 import { MapView } from "./MapView";
 
 type View = "map" | "numbers" | "clans";
@@ -101,7 +101,7 @@ function Chronicle({ events, t, minImportance, setMinImportance, explain, extinc
   );
 }
 
-function Numbers({ stats, series, discoveries, peoples, worldStores, lang, t }: { stats: Stats; series: Series; discoveries: Discovery[]; peoples: People[]; worldStores: { id: string; name: string; amount: number }[]; lang: Lang; t: Translate }) {
+function Numbers({ stats, series, discoveries, peoples, realms, worldStores, lang, t }: { stats: Stats; series: Series; discoveries: Discovery[]; peoples: People[]; realms: Realm[]; worldStores: { id: string; name: string; amount: number }[]; lang: Lang; t: Translate }) {
   const points = (key: string): Point[] => series[key] ?? [];
   const fed = useMemo(() => {
     const needed = new Map((series["food.needed"] ?? []).map((point) => [point.year, point.value]));
@@ -125,6 +125,7 @@ function Numbers({ stats, series, discoveries, peoples, worldStores, lang, t }: 
     [t("population"), formatNumber(stats.population, lang)],
     [t("everLived"), formatNumber(stats.ever_lived, lang)],
     [t("peoples"), formatNumber(stats.peoples, lang)],
+    [t("realms"), formatNumber(stats.realms ?? 0, lang)],
     [t("partnerships"), formatNumber(stats.trade_partnerships, lang)],
     [t("clans"), formatNumber(stats.clans, lang)],
     [t("settlements"), formatNumber(stats.settlements, lang)],
@@ -218,6 +219,34 @@ function Numbers({ stats, series, discoveries, peoples, worldStores, lang, t }: 
                     .join(", ")}
                 </span>
               ) : null}
+            </li>
+          );
+        })}
+      </ul>
+
+      <h2>{t("realms")}</h2>
+      <p className="note">{t("realmsNote")}</p>
+      {realms.length === 0 ? <p className="note">{t("noRealms")}</p> : null}
+      <ul className="peoples">
+        {realms.map((item) => {
+          const largest = Math.max(1, ...realms.map((other) => other.population));
+          const standing = item.ended_year === null;
+          return (
+            <li key={item.id} className={standing ? "" : "gone"}>
+              <span className="name">
+                <i className="chip" style={{ background: realmCss(item.id) }} aria-hidden="true" />
+                {item.name}
+              </span>
+              <span className="bar" aria-hidden="true">
+                <span style={{ width: `${(100 * item.population) / largest}%`, background: realmCss(item.id) }} />
+              </span>
+              <span className="count">{standing ? formatNumber(item.population, lang) : t("gone")}</span>
+              <span className="state">
+                {t("year")} {item.founded_year}
+                {standing
+                  ? `, ${item.clans.length} ${item.clans.length === 1 ? t("clansOne") : t("clans")}${item.ruler ? `, ${t("ruler")} ${item.ruler}` : ""}${item.seat ? `, ${t("seat")} ${item.seat}` : ""}${item.people ? `, ${t("ofThePeople")} ${item.people}` : ""}${item.tiles ? `, ${formatNumber(item.tiles, lang)} ${t("tilesOfLand")}` : ""}`
+                  : ` – ${item.ended_year}`}
+              </span>
             </li>
           );
         })}
@@ -568,6 +597,24 @@ function ClanDetail({ detail, t, lang, onShow, onPerson, onClan }: { detail: Gro
         {detail.people ? `${t("ofThePeople")} ${detail.people}, ` : ""}
         {detail.population} {t("people")}, {detail.settled ? `${t("settled")}${detail.place ? ` (${detail.place})` : ""}` : t("wandering")}, {t("founded")} {detail.founded_year}
       </p>
+      {detail.leader || detail.realm ? (
+        <p className="lede">
+          {detail.leader ? (
+            <>
+              {t("leader")}:{" "}
+              <button className="plain" onClick={() => onPerson(detail.leader!.id)}>
+                {detail.leader.name}
+              </button>
+            </>
+          ) : null}
+          {detail.leader && detail.realm ? ". " : ""}
+          {detail.realm ? (
+            <>
+              <i className="chip" style={{ background: realmCss(detail.realm.id) }} aria-hidden="true" /> {detail.realm.seat ? t("seatOf") : t("belongsTo")} {detail.realm.name}
+            </>
+          ) : null}
+        </p>
+      ) : null}
       {onShow ? (
         <button className="plain" onClick={onShow}>
         {t("showOnMap")}
@@ -672,8 +719,9 @@ export function App() {
   const [series, setSeries] = useState<Series>({});
   const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
   const [peoples, setPeoples] = useState<People[]>([]);
-  const [land, setLand] = useState<{ clans: number[]; peoples: number[] }>({ clans: [], peoples: [] });
-  const [showLand, setShowLand] = useState(true);
+  const [land, setLand] = useState<Land>({ clans: [], peoples: [], realms: [] });
+  const [realms, setRealms] = useState<Realm[]>([]);
+  const [landBy, setLandBy] = useState<"peoples" | "realms" | "off">("peoples");
   const [links, setLinks] = useState<TradeLink[]>([]);
   const [worldStores, setWorldStores] = useState<{ id: string; name: string; amount: number }[]>([]);
   const [showTrade, setShowTrade] = useState(true);
@@ -758,6 +806,7 @@ export function App() {
       ]);
       setPeoples(nextPeoples);
       setLand(await api.territory(worldId));
+      setRealms(await api.realms(worldId));
       setLinks(await api.trade(worldId));
       setWorldStores(await api.stores(worldId, lang));
       setSteps(nextSteps.values);
@@ -905,9 +954,13 @@ export function App() {
 
       <main>
         <div className={`stage ${view === "map" ? "" : "away"}`} aria-hidden={view !== "map"}>
-          <MapView active={view === "map"} map={map} steps={steps} groups={groups} places={places} people={people} land={showLand ? land : null} links={showTrade ? links : []} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
-          <button className={`map-toggle ${showLand ? "on" : ""}`} aria-pressed={showLand} onClick={() => setShowLand((shown) => !shown)}>
-            {t("land")}
+          <MapView active={view === "map"} map={map} steps={steps} groups={groups} places={places} people={people} land={landBy === "off" ? null : land} landBy={landBy === "realms" ? "realms" : "peoples"} realms={realms} links={showTrade ? links : []} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
+          <button
+            className={`map-toggle ${landBy === "off" ? "" : "on"}`}
+            aria-label={`${t("land")}: ${t(landBy === "peoples" ? "landPeoples" : landBy === "realms" ? "landRealms" : "landOff")}`}
+            onClick={() => setLandBy((shown) => (shown === "peoples" ? "realms" : shown === "realms" ? "off" : "peoples"))}
+          >
+            {landBy === "peoples" ? t("landPeoples") : landBy === "realms" ? t("landRealms") : t("land")}
           </button>
           <button className={`map-toggle second ${showTrade ? "on" : ""}`} aria-pressed={showTrade} onClick={() => setShowTrade((shown) => !shown)}>
             {t("trade")}
@@ -961,7 +1014,7 @@ export function App() {
           </aside>
         </div>
 
-        {view === "numbers" && stats ? <Numbers stats={stats} series={series} discoveries={discoveries} peoples={peoples} worldStores={worldStores} lang={lang} t={t} /> : null}
+        {view === "numbers" && stats ? <Numbers stats={stats} series={series} discoveries={discoveries} peoples={peoples} realms={realms} worldStores={worldStores} lang={lang} t={t} /> : null}
 
         {view === "clans" ? (
           <div className="page clans-page">
