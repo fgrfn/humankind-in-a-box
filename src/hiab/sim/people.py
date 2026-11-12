@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from hiab.packs import LifeParams
+from hiab.packs import BIOMES, LifeParams
 
 if TYPE_CHECKING:
     from hiab.sim.engine import World
@@ -65,6 +65,7 @@ class Clan:
     parent: int
     month: int  # month of the year in which the clan's yearly matters are decided
     language: dict[str, str]
+    culture: int = 0  # the people the clan belongs to
     members: list[int] = field(default_factory=list)
     techs: dict[str, int] = field(default_factory=dict)
     food: int = 0
@@ -74,6 +75,27 @@ class Clan:
     place: int = 0
     famine: bool = False
     dissolved: int | None = None
+
+
+@dataclass(slots=True)
+class Culture:
+    """A people: clans of common descent that still speak alike."""
+
+    id: int
+    name: str
+    parent: int
+    founded: int
+    origin: int  # the clan it began with
+    language: dict[str, str]  # how the people spoke when it formed
+    words: dict[str, str] = field(default_factory=dict)  # meaning -> word, made when first needed
+    ended: int | None = None
+
+
+def sound_distance(a: dict[str, str], b: dict[str, str]) -> int:
+    """How many sounds two ways of speaking do not share."""
+    consonants = len(set(a["c"]) ^ set(b["c"])) // 2
+    vowels = len(set(a["v"]) ^ set(b["v"]))
+    return consonants + vowels
 
 
 def _box_sum(grid: np.ndarray, radius: int) -> np.ndarray:
@@ -104,9 +126,15 @@ class Society:
         self.next_building = 1
         self.extinct = False
         self.steps = np.zeros((world.map.height, world.map.width), dtype=np.int32)
+        # Which clan holds each tile (0: nobody), and the people that clan belongs to.
+        self.territory = np.zeros((world.map.height, world.map.width), dtype=np.int32)
+        self.land_people = np.zeros((world.map.height, world.map.width), dtype=np.int32)
         self.dirty_persons: set[int] = set()
         self.dirty_clans: set[int] = set()
         self.dirty_places: set[int] = set()
+        self.cultures: dict[int, Culture] = {}
+        self.next_culture = 1
+        self.dirty_cultures: set[int] = set()
         self.new_discoveries: list[tuple[int, str, int, int, str]] = []
         self.forgotten: list[tuple[int, str, int]] = []  # clan, technology, tick
         self.food_ids = world.packs.foods()
@@ -238,7 +266,64 @@ class Society:
         self.dirty_persons.add(person.id)
         return person
 
-    def add_clan(self, y: int, x: int, parent: int, language: dict[str, str]) -> Clan:
+    def add_culture(self, clan: Clan, parent: int) -> Culture:
+        endings = self.place_endings(clan.language)
+        culture = Culture(
+            id=self.next_culture,
+            name=self.make_name(clan.language, sex=0) + endings[self.quiet(0, len(endings) - 1)],
+            parent=parent,
+            founded=self.world.tick,
+            origin=clan.id,
+            language=dict(clan.language),
+        )
+        self.next_culture += 1
+        self.cultures[culture.id] = culture
+        self.dirty_cultures.add(culture.id)
+        clan.culture = culture.id
+        self.dirty_clans.add(clan.id)
+        return culture
+
+    @staticmethod
+    def place_endings(language: dict[str, str]) -> list[str]:
+        """The endings a people gives its own name and its places. Follows from its sounds."""
+        c, v = language["c"], language["v"]
+        return [v[0] + c[0], v[-1] + c[1], v[0] + c[2] + v[-1]]
+
+    def word(self, culture: Culture, meaning: str) -> str:
+        """The people's word for something. Coined when first needed, then kept."""
+        if meaning not in culture.words:
+            culture.words[meaning] = self.make_name(culture.language, sex=0)
+            self.dirty_cultures.add(culture.id)
+        return culture.words[meaning]
+
+    def place_meaning(self, y: int, x: int) -> str:
+        """What a place is named after: what is found there, or the land itself."""
+        world = self.world
+        found = int(world.map.deposit[y, x])
+        if found >= 0:
+            return str(world.map.deposit_ids[found])
+        if world.map.river[y, x]:
+            return "river"
+        area = self.window(y, x, 1)
+        if world.map.water[area].any():
+            return "water"
+        return BIOMES[int(world.map.biome[y, x])]
+
+    def place_name(self, clan: Clan) -> tuple[str, str]:
+        culture = self.cultures[clan.culture]
+        meaning = self.place_meaning(clan.y, clan.x)
+        endings = self.place_endings(culture.language)
+        taken = {place["name"] for place in self.places.values()}
+        stem = self.word(culture, meaning)
+        for ending in endings:
+            if stem + ending not in taken:
+                return stem + ending, meaning
+        # Every plain form is taken: tell it apart by who founded it.
+        return f"{stem}{endings[0]} {clan.name}", meaning
+
+    def add_clan(
+        self, y: int, x: int, parent: int, language: dict[str, str], culture: int = 0
+    ) -> Clan:
         clan = Clan(
             id=self.next_clan,
             name=self.make_name(language),
@@ -248,6 +333,7 @@ class Society:
             parent=parent,
             month=self.quiet(0, 11),
             language=language,
+            culture=culture,
             arrived=self.world.tick,
         )
         self.next_clan += 1
@@ -275,6 +361,7 @@ class Society:
         y, x = divmod(pick, world.map.width)
 
         clan = self.add_clan(y, x, 0, self.new_language())
+        self.add_culture(clan, 0)
         for _ in range(self.p.start_families):
             family = self.next_family
             self.next_family += 1
@@ -376,11 +463,15 @@ class Society:
 
         raws: dict[str, np.ndarray] = {}
         foods: dict[str, int] = {}
+        # On land another people holds, strangers get less: they are watched and driven off.
+        held_by = self.land_people[area]
+        foreign = (held_by != 0) & (held_by != clan.culture)
         for rid in self.food_ids:
             percent = harvest_percent[rid]
             if percent <= 0:
                 continue
             raw = world.stocks[rid][area].astype(np.int64) * p.harvest_share_percent // 100
+            raw = np.where(foreign, raw * p.foreign_harvest_percent // 100, raw)
             amount = int(raw.sum()) * percent // 100 * world.packs.resources[rid].food_value
             if amount > 0:
                 raws[rid], foods[rid] = raw, amount
@@ -638,6 +729,8 @@ class Society:
         self.retired[clan.id] = clan
         del self.clans[clan.id]
         self._effects.pop(clan.id, None)
+        if clan.culture in self.cultures:
+            self.fade(self.cultures[clan.culture])
 
     # ---- one year of a clan ----------------------------------------------
 
@@ -683,6 +776,94 @@ class Society:
         self._effects.pop(clan.id, None)
         self.dirty_clans.add(clan.id)
         self.new_discoveries.append((clan.id, tech_id, self.world.tick, discoverer, how))
+
+    def kinship(self, clan: Clan) -> None:
+        """Peoples form and fade: a clan grown strange to its people founds its
+        own, and a clan alone among strangers may become one of them."""
+        world, p = self.world, self.p
+        culture = self.cultures.get(clan.culture)
+        if culture is None:
+            return
+        near = [
+            other
+            for other in (self.clans[cid] for cid in sorted(self.clans))
+            if other.id != clan.id
+            and max(abs(other.y - clan.y), abs(other.x - clan.x)) <= p.contact_radius
+        ]
+        kin = [other for other in near if other.culture == clan.culture]
+        if (
+            clan.id != culture.origin
+            and sound_distance(clan.language, culture.language) >= p.people_sound_distance
+        ):
+            factors = [("no_kin_near", 3.0)] if not kin else []
+            if clan.settled:
+                factors.append(("settled", 1.5))
+            if world.roll(
+                "people_emerges", "group", clan.id, p.people_emerge_chance_per_year, factors
+            ):
+                new = self.add_culture(clan, culture.id)
+                # Neighbours who by now speak more like the founders go with them.
+                followers = 0
+                for other in kin:
+                    if sound_distance(other.language, new.language) < sound_distance(
+                        other.language, culture.language
+                    ):
+                        other.culture = new.id
+                        self.dirty_clans.add(other.id)
+                        followers += 1
+                world.count("peoples.emerged")
+                world.emit(
+                    "people_emerged",
+                    data={
+                        "people": new.name,
+                        "people_id": new.id,
+                        "from": culture.name,
+                        "from_id": culture.id,
+                        "clan": clan.name,
+                        "clan_id": clan.id,
+                        "followers": followers,
+                    },
+                )
+                self.fade(culture)
+                return
+        if kin or len(near) < 3:
+            return
+        # Alone among strangers: the people most of the neighbours belong to.
+        counts: dict[int, int] = {}
+        for other in near:
+            counts[other.culture] = counts.get(other.culture, 0) + 1
+        host_id = min(counts, key=lambda cid: (-counts[cid], cid))
+        if counts[host_id] < 3:
+            return
+        if not world.roll("people_joined", "group", clan.id, p.people_join_chance_per_year, []):
+            return
+        host = self.cultures[host_id]
+        clan.culture = host_id
+        self.dirty_clans.add(clan.id)
+        world.count("peoples.joined")
+        world.emit(
+            "people_joined",
+            data={
+                "clan": clan.name,
+                "clan_id": clan.id,
+                "people": host.name,
+                "people_id": host.id,
+                "from": culture.name,
+                "from_id": culture.id,
+            },
+        )
+        self.fade(culture)
+
+    def fade(self, culture: Culture) -> None:
+        """A people nobody belongs to any more is history."""
+        if culture.ended is not None:
+            return
+        if any(clan.culture == culture.id for clan in self.clans.values()):
+            return
+        culture.ended = self.world.tick
+        self.dirty_cultures.add(culture.id)
+        self.world.count("peoples.vanished")
+        self.world.emit("people_vanished", data={"people": culture.name, "people_id": culture.id})
 
     def forget(self, clan: Clan, adults: list[Person]) -> None:
         """Knowledge nobody can keep up is lost.
@@ -795,6 +976,7 @@ class Society:
                     )
 
         self.forget(clan, adults)
+        self.kinship(clan)
 
         hungry = self.unmet_average(clan) >= 15
         if clan.settled:
@@ -853,11 +1035,13 @@ class Society:
             place["abandoned"] = None
             place["group"] = clan.id
         else:
+            name, meaning = self.place_name(clan)
             place = {
                 "id": self.next_place,
                 "y": clan.y,
                 "x": clan.x,
-                "name": self.make_name(clan.language),
+                "name": name,
+                "meaning": meaning,
                 "founded": self.world.tick,
                 "abandoned": None,
                 "group": clan.id,
@@ -988,12 +1172,92 @@ class Society:
                 },
             )
 
+    def hold(self, clan: Clan) -> tuple[int, int]:
+        """How hard a clan presses on the land around it, and how far."""
+        p = self.p
+        strength = len(self.adults(clan))
+        if clan.settled:
+            standing = sum(
+                1 for b in self.places[clan.place]["buildings"] if b["state"] == "standing"
+            )
+            strength += 8 + 3 * standing
+        strength = strength * (100 - min(60, self.unmet_average(clan))) // 100
+        if strength <= 0:
+            return 0, 0
+        radius = (3 if clan.settled else 2) + strength // p.territory_strength_per_tile
+        return strength, min(p.territory_max_radius, radius)
+
+    def claim(self) -> None:
+        """Once a year the land is shared out anew.
+
+        A tile goes to the clan that presses hardest on it: strong clans reach
+        further, pressure falls off with distance, and whoever holds a tile
+        already has an edge, so borders move only when the balance really shifts.
+        No dice: the outcome follows from where and how strong everybody is.
+        """
+        world, p = self.world, self.p
+        shape = self.territory.shape
+        best = np.zeros(shape, dtype=np.int64)
+        owner = np.zeros(shape, dtype=np.int32)
+        for clan_id in sorted(self.clans):
+            clan = self.clans[clan_id]
+            strength, radius = self.hold(clan)
+            if strength <= 0:
+                continue
+            area = self.window(clan.y, clan.x, radius)
+            ys, xs = np.mgrid[area]
+            distance = np.maximum(np.abs(ys - clan.y), np.abs(xs - clan.x))
+            pressure = (strength * (radius + 1 - distance) * 100).astype(np.int64)
+            held = self.territory[area] == clan.id
+            pressure = np.where(
+                held, pressure * (100 + p.territory_hold_bonus_percent) // 100, pressure
+            )
+            wins = pressure > best[area]
+            best[area] = np.where(wins, pressure, best[area])
+            owner[area] = np.where(wins, clan.id, owner[area])
+        owner[world.map.water] = 0
+
+        people_of = np.zeros(self.next_clan + 1, dtype=np.int32)
+        for clan_id in sorted(self.clans):
+            people_of[clan_id] = self.clans[clan_id].culture
+        land_people = people_of[owner]
+
+        # Land that passed from one people to another is news.
+        before, after = self.land_people, land_people
+        moved = (before != after) & (before != 0) & (after != 0)
+        if moved.any():
+            pairs, counts = np.unique(
+                before[moved].astype(np.int64) * (self.next_culture + 1) + after[moved],
+                return_counts=True,
+            )
+            for pair, count in zip(pairs.tolist(), counts.tolist(), strict=True):
+                loser_id, winner_id = divmod(pair, self.next_culture + 1)
+                world.count("territory.tiles_taken", count)
+                if count < p.border_event_tiles:
+                    continue
+                loser, winner = self.cultures.get(loser_id), self.cultures.get(winner_id)
+                if loser is None or winner is None:
+                    continue
+                world.emit(
+                    "border_shift",
+                    data={
+                        "people": winner.name,
+                        "people_id": winner.id,
+                        "from": loser.name,
+                        "from_id": loser.id,
+                        "tiles": count,
+                    },
+                )
+        self.territory = owner
+        self.land_people = land_people
+
     def new_year(self) -> None:
         """Footsteps fade, and what stands in abandoned places slowly falls apart."""
         p = self.p
         self.steps = (
             self.steps.astype(np.int64) * (100 - p.steps_decay_percent_per_year) // 100
         ).astype(np.int32)
+        self.claim()
         for place_id in sorted(self.places):
             place = self.places[place_id]
             if place["abandoned"] is None:
@@ -1058,7 +1322,9 @@ class Society:
         site = self.best_site(clan, min_distance=3)
         if site is None:
             return
-        new = self.add_clan(site[1], site[2], clan.id, self.drift_language(clan.language))
+        new = self.add_clan(
+            site[1], site[2], clan.id, self.drift_language(clan.language), clan.culture
+        )
         new.techs = dict(clan.techs)
         for tech_id in sorted(new.techs):
             self.new_discoveries.append((new.id, tech_id, self.world.tick, 0, "inherited"))
@@ -1217,6 +1483,21 @@ class Society:
                 (tick, "food.unmet_percent", "group", clan.id, float(self.unmet_average(clan)))
             )
             rows.append((tick, "tech.known", "group", clan.id, float(len(clan.techs))))
+        by_culture: dict[int, int] = {}
+        for clan_id in sorted(self.clans):
+            clan = self.clans[clan_id]
+            by_culture[clan.culture] = by_culture.get(clan.culture, 0) + len(clan.members)
+        for culture_id in sorted(by_culture):
+            rows.append(
+                (tick, "people.population", "culture", culture_id, float(by_culture[culture_id]))
+            )
+        rows.append((tick, "peoples.count", "world", 0, float(len(by_culture))))
+        held = np.bincount(self.land_people.ravel(), minlength=self.next_culture + 1)
+        for culture_id in sorted(by_culture):
+            rows.append(
+                (tick, "territory.tiles", "culture", culture_id, float(int(held[culture_id])))
+            )
+        rows.append((tick, "territory.tiles", "world", 0, float(int((self.territory > 0).sum()))))
         rows.append((tick, "people.population", "world", 0, float(population)))
         rows.append((tick, "people.adults", "world", 0, float(adults_total)))
         rows.append((tick, "people.families", "world", 0, float(len(families))))
@@ -1250,6 +1531,7 @@ class Society:
         self.dirty_persons.clear()
         self.dirty_clans.clear()
         self.dirty_places.clear()
+        self.dirty_cultures.clear()
         self.new_discoveries.clear()
         self.forgotten.clear()
         self.retired = {}
@@ -1263,7 +1545,21 @@ class Society:
             "next_family": self.next_family,
             "next_place": self.next_place,
             "next_building": self.next_building,
+            "next_culture": self.next_culture,
             "extinct": self.extinct,
+            "cultures": [
+                {
+                    "id": k.id,
+                    "name": k.name,
+                    "parent": k.parent,
+                    "founded": k.founded,
+                    "origin": k.origin,
+                    "language": k.language,
+                    "words": dict(sorted(k.words.items())),
+                    "ended": k.ended,
+                }
+                for k in (self.cultures[kid] for kid in sorted(self.cultures))
+            ],
             "clans": [
                 {
                     "id": c.id,
@@ -1274,6 +1570,7 @@ class Society:
                     "parent": c.parent,
                     "month": c.month,
                     "language": c.language,
+                    "culture": c.culture,
                     "techs": dict(sorted(c.techs.items())),
                     "food": c.food,
                     "unmet": c.unmet,
@@ -1288,7 +1585,11 @@ class Society:
         }
 
     def load_state(
-        self, state: dict[str, Any], persons: list[Person], steps: np.ndarray | None
+        self,
+        state: dict[str, Any],
+        persons: list[Person],
+        steps: np.ndarray | None,
+        territory: np.ndarray | None = None,
     ) -> None:
         self.next_person = state["next_person"]
         self.next_clan = state["next_clan"]
@@ -1307,6 +1608,7 @@ class Society:
                 parent=raw["parent"],
                 month=raw["month"],
                 language=dict(raw["language"]),
+                culture=raw.get("culture", 0),
                 techs=dict(raw["techs"]),
                 food=raw["food"],
                 unmet=list(raw["unmet"]),
@@ -1315,6 +1617,20 @@ class Society:
                 place=raw["place"],
                 famine=raw["famine"],
             )
+        self.next_culture = state.get("next_culture", 1)
+        self.cultures = {
+            raw["id"]: Culture(
+                id=raw["id"],
+                name=raw["name"],
+                parent=raw["parent"],
+                founded=raw["founded"],
+                origin=raw["origin"],
+                language=dict(raw["language"]),
+                words=dict(raw["words"]),
+                ended=raw["ended"],
+            )
+            for raw in state.get("cultures", [])
+        }
         self.places = {}
         for raw in state["places"]:
             place = dict(raw)
@@ -1328,5 +1644,29 @@ class Society:
             self.by_month[(person.born // DAYS_PER_MONTH) % 12].append(person.id)
         if steps is not None:
             self.steps = steps
+        if territory is not None:
+            self.territory = territory
+            people_of = np.zeros(self.next_clan + 1, dtype=np.int32)
+            for clan_id in sorted(self.clans):
+                people_of[clan_id] = self.clans[clan_id].culture
+            self.land_people = people_of[np.clip(territory, 0, self.next_clan)]
         self._effects = {}
         self.clear_dirty()
+        if self.clans and not self.cultures:
+            # A world from before peoples existed: everybody alive is one people,
+            # named after the oldest clan. No dice, so loading stays repeatable.
+            eldest = self.clans[min(self.clans)]
+            culture = Culture(
+                id=1,
+                name=eldest.name + self.place_endings(eldest.language)[0],
+                parent=0,
+                founded=eldest.founded,
+                origin=eldest.id,
+                language=dict(eldest.language),
+            )
+            self.cultures[1] = culture
+            self.next_culture = 2
+            self.dirty_cultures.add(1)
+            for clan in self.clans.values():
+                clan.culture = 1
+                self.dirty_clans.add(clan.id)

@@ -64,6 +64,17 @@ const BUILDING_SPRITES: Record<string, string> = {
   well: "storage_pit",
 };
 
+// Each people gets its own hue, spread round the colour wheel so neighbours in
+// the list differ clearly. There can be dozens, so colour never stands alone.
+function peopleColour(id: number): number {
+  const hue = ((id * 137.508) % 360) / 60;
+  const chroma = 0.62;
+  const x = chroma * (1 - Math.abs((hue % 2) - 1));
+  const [r, g, b] = [[chroma, x, 0], [x, chroma, 0], [0, chroma, x], [0, x, chroma], [x, 0, chroma], [chroma, 0, x]][Math.floor(hue) % 6];
+  const lift = 0.32;
+  return (Math.round((r + lift) * 255) << 16) | (Math.round((g + lift) * 255) << 8) | Math.round((b + lift) * 255);
+}
+
 // A fixed number per tile, so the same world always looks the same.
 function tileNoise(x: number, y: number, salt: number): number {
   let h = (x * 374761393 + y * 668265263 + salt * 2147483647) | 0;
@@ -342,6 +353,7 @@ interface Scene {
   world: Container;
   terrain: Container;
   paths: Container;
+  borders: Container;
   fields: Container;
   nature: Container;
   buildings: Container;
@@ -357,13 +369,14 @@ interface Props {
   groups: Group[];
   places: Place[];
   people: Human[];
+  land: { clans: number[]; peoples: number[] } | null;
   selected: number | null;
   focus: { id: number; nonce: number } | null;
   onSelect: (id: number) => void;
   onPerson: (id: number) => void;
 }
 
-export function MapView({ map, steps, groups, places, people, selected, focus, onSelect, onPerson }: Props) {
+export function MapView({ map, steps, groups, places, people, land, selected, focus, onSelect, onPerson }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<Scene | null>(null);
   const ready = useRef<Promise<void> | null>(null);
@@ -398,14 +411,15 @@ export function MapView({ map, steps, groups, places, people, selected, focus, o
         const terrain = new Container();
         const paths = new Container();
         const fields = new Container();
+        const borders = new Container();
         const nature = new Container();
         const buildings = new Container();
         const people = new Container();
         people.sortableChildren = true;
         const camps = new Container();
-        world.addChild(terrain, fields, paths, nature, buildings, people, camps);
+        world.addChild(terrain, fields, paths, borders, nature, buildings, people, camps);
         app.stage.addChild(world);
-        scene.current = { app, world, terrain, paths, fields, nature, buildings, people, camps, sheet, natureAt: new Map() };
+        scene.current = { app, world, terrain, paths, borders, fields, nature, buildings, people, camps, sheet, natureAt: new Map() };
         app.ticker.add((ticker) => {
           people.visible = world.scale.x >= 0.9; // too small to read from far away
           if (people.visible) crowd.current.step(Math.min(0.1, ticker.deltaMS / 1000));
@@ -586,6 +600,49 @@ export function MapView({ map, steps, groups, places, people, selected, focus, o
     });
   }, [map, steps, groups, places]);
 
+  // Territories: land tinted in the colour of the people that holds it, a strong
+  // line where two peoples meet and a faint one between clans of one people.
+  useEffect(() => {
+    if (!map) return;
+    void ready.current?.then(() => {
+      const current = scene.current;
+      if (!current) return;
+      for (const child of current.borders.removeChildren()) child.destroy();
+      if (!land || land.peoples.length !== map.width * map.height) return;
+      const wash = new Graphics();
+      const inner = new Graphics();
+      const outer = new Graphics();
+      const at = (x: number, y: number, list: number[]) => (x < 0 || y < 0 || x >= map.width || y >= map.height ? 0 : list[y * map.width + x]);
+      for (let y = 0; y < map.height; y++) {
+        for (let x = 0; x < map.width; x++) {
+          const people = land.peoples[y * map.width + x];
+          if (!people) continue;
+          const clan = land.clans[y * map.width + x];
+          const colour = peopleColour(people);
+          diamond(wash, x, y);
+          wash.fill({ color: colour, alpha: 0.2 });
+          const [cx, top] = project(x, y);
+          const cy = top + TILE_H / 2;
+          // The four edges of the tile and the neighbour behind each.
+          const edges: [number, number, number, number, number, number][] = [
+            [cx, top, cx + TILE_W / 2, cy, x, y - 1],
+            [cx + TILE_W / 2, cy, cx, top + TILE_H, x + 1, y],
+            [cx, top + TILE_H, cx - TILE_W / 2, cy, x, y + 1],
+            [cx - TILE_W / 2, cy, cx, top, x - 1, y],
+          ];
+          for (const [x1, y1, x2, y2, nx, ny] of edges) {
+            if (at(nx, ny, land.peoples) !== people) {
+              outer.moveTo(x1, y1).lineTo(x2, y2).stroke({ color: colour, width: 1.6, alpha: 0.95 });
+            } else if (at(nx, ny, land.clans) !== clan && (nx > x || ny > y)) {
+              inner.moveTo(x1, y1).lineTo(x2, y2).stroke({ color: colour, width: 0.6, alpha: 0.45 });
+            }
+          }
+        }
+      }
+      current.borders.addChild(wash, inner, outer);
+    });
+  }, [map, land]);
+
   // Fields: the tiles where people work the soil this month.
   useEffect(() => {
     if (!map) return;
@@ -680,6 +737,12 @@ export function MapView({ map, steps, groups, places, people, selected, focus, o
         label.position.set(0, -16);
         label.resolution = 3;
         marker.addChild(label);
+        // A small flag in the colour of the people the clan belongs to. The
+        // name of the people is in the clan's detail; the colour only groups.
+        const flag = new Graphics();
+        flag.poly([0, -3.2, 3.2, 0, 0, 3.2, -3.2, 0]).fill(peopleColour(group.people_id)).stroke({ color: 0x10242d, width: 1 });
+        flag.position.set(0, -12.5);
+        marker.addChild(flag);
         marker.eventMode = "static";
         marker.cursor = "pointer";
         marker.hitArea = { contains: (x: number, y: number) => Math.abs(x) < 12 && y > -24 && y < 6 };

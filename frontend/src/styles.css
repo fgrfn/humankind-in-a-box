@@ -218,3 +218,18 @@ button.plain.name {
 }
 button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 .kin { display: block; }
+
+/* Peoples: one row each, a bar for how many they are. */
+.peoples { list-style: none; margin: 0 0 40px; padding: 0; border-top: 1px solid var(--line); }
+.peoples li { display: grid; grid-template-columns: minmax(110px, 200px) 1fr 70px; gap: 4px 14px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.peoples .name { font: 600 17px/1.25 var(--prose); color: var(--chalk); }
+.peoples .bar { height: 8px; background: var(--deep); border-radius: 0 4px 4px 0; overflow: hidden; }
+.peoples .bar span { display: block; height: 100%; min-width: 2px; background: #b98a2e; border-radius: 0 4px 4px 0; }
+.peoples .count { text-align: right; font-variant-numeric: tabular-nums; color: var(--chalk); }
+.peoples .state { grid-column: 1 / -1; font-size: 15px; color: var(--muted); }
+.peoples .gone .name, .peoples .gone .count { color: var(--muted); font-weight: 400; }
+
+/* Switch on the map: show or hide who holds the land. */
+.map-toggle { position: absolute; left: 14px; top: 14px; z-index: 2; min-height: 40px; padding: 0 14px; font: 500 15px/1 var(--data, inherit); color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.map-toggle.on { color: var(--deep); background: var(--ochre); border-color: var(--ochre); }
+.map-toggle:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }

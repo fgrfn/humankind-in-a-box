@@ -133,3 +133,23 @@ building_ruined:
   text:
     de: "Im verlassenen {place} verfällt ein Bauwerk: {building}."
     en: "In abandoned {place} a structure falls into ruin: {building}."
+people_emerged:
+  importance: 4
+  text:
+    de: "Die {clan} sprechen längst anders als die {from}. Ein neues Volk entsteht: die {people}."
+    en: "The {clan} have long spoken differently from the {from}. A new people forms: the {people}."
+people_joined:
+  importance: 3
+  text:
+    de: "Die {clan}, allein unter Fremden, werden Teil der {people}."
+    en: "The {clan}, alone among strangers, become part of the {people}."
+people_vanished:
+  importance: 4
+  text:
+    de: "Niemand nennt sich mehr {people}. Das Volk ist Geschichte."
+    en: "Nobody calls themselves {people} any more. The people is history."
+border_shift:
+  importance: 2
+  text:
+    de: "Die {people} drängen die {from} zurück und halten nun {tiles} Felder ihres Landes."
+    en: "The {people} push back the {from} and now hold {tiles} tiles of their land."

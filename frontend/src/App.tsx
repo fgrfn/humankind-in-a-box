@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Discovery, type Group, type Human, type Lang, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
+import { api, type Discovery, type Group, type Human, type Lang, type People, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
 import { Chart, SERIES_COLOURS, type Point } from "./Chart";
 import { HistoryBand, type Mark } from "./HistoryBand";
 import { formatNumber, translator, type TextKey } from "./i18n";
@@ -98,7 +98,7 @@ function Chronicle({ events, t, minImportance, setMinImportance, explain, extinc
   );
 }
 
-function Numbers({ stats, series, discoveries, lang, t }: { stats: Stats; series: Series; discoveries: Discovery[]; lang: Lang; t: Translate }) {
+function Numbers({ stats, series, discoveries, peoples, lang, t }: { stats: Stats; series: Series; discoveries: Discovery[]; peoples: People[]; lang: Lang; t: Translate }) {
   const points = (key: string): Point[] => series[key] ?? [];
   const fed = useMemo(() => {
     const needed = new Map((series["food.needed"] ?? []).map((point) => [point.year, point.value]));
@@ -121,6 +121,7 @@ function Numbers({ stats, series, discoveries, lang, t }: { stats: Stats; series
     [t("year"), formatNumber(stats.year, lang)],
     [t("population"), formatNumber(stats.population, lang)],
     [t("everLived"), formatNumber(stats.ever_lived, lang)],
+    [t("peoples"), formatNumber(stats.peoples, lang)],
     [t("clans"), formatNumber(stats.clans, lang)],
     [t("settlements"), formatNumber(stats.settlements, lang)],
     [t("discoveries"), `${stats.discoveries} / ${stats.discoveries_possible}`],
@@ -163,6 +164,28 @@ function Numbers({ stats, series, discoveries, lang, t }: { stats: Stats; series
         <Chart title={t("climateChart")} series={[{ name: t("climate"), colour: SERIES_COLOURS[1], points: climate }]} unit=" °C" digits={1} signed {...common} />
       </div>
 
+      <h2>{t("peoples")}</h2>
+      <p className="note">{t("peoplesNote")}</p>
+      <ul className="peoples">
+        {peoples.map((item) => {
+          const largest = Math.max(1, ...peoples.map((other) => other.population));
+          return (
+            <li key={item.id} className={item.ended_year === null ? "" : "gone"}>
+              <span className="name">{item.name}</span>
+              <span className="bar" aria-hidden="true">
+                <span style={{ width: `${(100 * item.population) / largest}%` }} />
+              </span>
+              <span className="count">{item.ended_year === null ? formatNumber(item.population, lang) : t("gone")}</span>
+              <span className="state">
+                {item.parent ? `${t("descendedFrom")} ${item.parent}` : t("firstPeople")}, {t("year")} {item.founded_year}
+                {item.ended_year === null ? `, ${item.clans} ${item.clans === 1 ? t("clansOne") : t("clans")}` : ` – ${item.ended_year}`}
+                {item.tiles ? `, ${formatNumber(item.tiles, lang)} ${t("tilesOfLand")}` : ""}, {t("sounds")} {item.consonants.split("").join(" ")} · {item.vowels.split("").join(" ")}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
       <h2>{t("discoveries")}</h2>
       <ul className="discoveries">
         {discoveries.map((item) => (
@@ -188,6 +211,7 @@ function ClanDetail({ detail, t, onShow, onPerson }: { detail: Group; t: Transla
     <article className="detail">
       <h2>{detail.name}</h2>
       <p className="lede">
+        {detail.people ? `${t("ofThePeople")} ${detail.people}, ` : ""}
         {detail.population} {t("people")}, {detail.settled ? `${t("settled")}${detail.place ? ` (${detail.place})` : ""}` : t("wandering")}, {t("founded")} {detail.founded_year}
       </p>
       <button className="plain" onClick={onShow}>
@@ -256,6 +280,9 @@ export function App() {
   const [events, setEvents] = useState<WorldEvent[]>([]);
   const [series, setSeries] = useState<Series>({});
   const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
+  const [peoples, setPeoples] = useState<People[]>([]);
+  const [land, setLand] = useState<{ clans: number[]; peoples: number[] }>({ clans: [], peoples: [] });
+  const [showLand, setShowLand] = useState(true);
   const [marks, setMarks] = useState<Mark[]>([]);
   const [view, setView] = useState<View>("map");
   const [ledgerOpen, setLedgerOpen] = useState(() => window.matchMedia("(min-width: 821px)").matches);
@@ -312,12 +339,15 @@ export function App() {
   usePolling(
     async () => {
       if (worldId === null) return;
-      const [nextSteps, nextSeries, nextDiscoveries, found] = await Promise.all([
+      const [nextSteps, nextSeries, nextDiscoveries, found, nextPeoples] = await Promise.all([
         api.steps(worldId),
         api.metrics(worldId, METRIC_KEYS),
         api.technologies(worldId, lang),
         api.discoveries(worldId, lang),
+        api.peoples(worldId),
       ]);
+      setPeoples(nextPeoples);
+      setLand(await api.territory(worldId));
       setSteps(nextSteps.values);
       setSeries(nextSeries);
       setDiscoveries(nextDiscoveries);
@@ -450,7 +480,10 @@ export function App() {
 
       <main>
         <div className="stage" hidden={view !== "map"}>
-          <MapView map={map} steps={steps} groups={groups} places={places} people={people} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
+          <MapView map={map} steps={steps} groups={groups} places={places} people={people} land={showLand ? land : null} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
+          <button className={`map-toggle ${showLand ? "on" : ""}`} aria-pressed={showLand} onClick={() => setShowLand((shown) => !shown)}>
+            {t("land")}
+          </button>
           <aside className={`ledger ${ledgerOpen ? "open" : ""}`} aria-label={t("chronicle")}>
             <button className="ledger-head" onClick={() => setLedgerOpen((open) => !open)} aria-expanded={ledgerOpen} title={ledgerOpen ? t("hideChronicle") : t("showChronicle")}>
               <span className="ledger-title">{t("chronicle")}</span>
@@ -467,7 +500,7 @@ export function App() {
           </aside>
         </div>
 
-        {view === "numbers" && stats ? <Numbers stats={stats} series={series} discoveries={discoveries} lang={lang} t={t} /> : null}
+        {view === "numbers" && stats ? <Numbers stats={stats} series={series} discoveries={discoveries} peoples={peoples} lang={lang} t={t} /> : null}
 
         {view === "clans" ? (
           <div className="page clans-page">
@@ -476,7 +509,10 @@ export function App() {
                 <li key={group.id}>
                   <button className={group.id === selected ? "on" : ""} onClick={() => setSelected(group.id)}>
                     <span className="clan-name">{group.name}</span>
-                    <span className="clan-where">{group.settled ? (group.place ?? t("settled")) : t("wandering")}</span>
+                    <span className="clan-where">
+                      {group.people ? `${group.people}, ` : ""}
+                      {group.settled ? (group.place ?? t("settled")) : t("wandering")}
+                    </span>
                     <span className="clan-count">{group.population}</span>
                   </button>
                 </li>

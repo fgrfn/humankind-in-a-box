@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from hiab import __version__
 from hiab.packs import BIOMES, PackSet
-from hiab.render import calendar, render_event
+from hiab.render import calendar, meaning_text, render_event
 
 Language = Literal["de", "en"]
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
@@ -159,6 +159,10 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
                 "SELECT COUNT(DISTINCT technology) FROM discoveries WHERE world_id = ?"
             ),
             "discoveries_possible": len(packs.technologies),
+            "peoples": one(
+                "SELECT COUNT(DISTINCT culture) FROM groups "
+                "WHERE world_id = ? AND dissolved IS NULL"
+            ),
             "births_total": total("people.births"),
             "deaths_total": total("people.deaths"),
             "migrations_total": total("clans.migrations"),
@@ -232,6 +236,60 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             else min(99, 100 * row["progress"] // max(1, known.work)),
         }
 
+    @api.get("/worlds/{world_id}/peoples")
+    def peoples(world_id: int, conn: Db) -> list[dict[str, Any]]:
+        """Every people that ever formed: descent, size, sounds and a few of its words."""
+        world_row(conn, world_id)
+        living = {
+            row["culture"]: row
+            for row in _rows(
+                conn,
+                "SELECT g.culture, COUNT(DISTINCT g.id) AS clans, "
+                "SUM(g.settled) AS settlements FROM groups g "
+                "WHERE g.world_id = ? AND g.dissolved IS NULL GROUP BY g.culture",
+                (world_id,),
+            )
+        }
+        heads = {
+            row["culture"]: row["n"]
+            for row in _rows(
+                conn,
+                "SELECT g.culture, COUNT(*) AS n FROM persons p "
+                "JOIN groups g ON g.world_id = p.world_id AND g.id = p.clan "
+                "WHERE p.world_id = ? AND p.died IS NULL GROUP BY g.culture",
+                (world_id,),
+            )
+        }
+        land: dict[int, int] = {}
+        for held in held_land(conn, world_id)[1]:
+            if held:
+                land[held] = land.get(held, 0) + 1
+        rows = _rows(conn, "SELECT * FROM cultures WHERE world_id = ? ORDER BY id", (world_id,))
+        names = {row["id"]: row["name"] for row in rows}
+        out = []
+        for row in rows:
+            sounds = json.loads(row["sound_rules"])
+            alive = living.get(row["id"])
+            out.append(
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "parent_id": row["parent_culture"],
+                    "parent": names.get(row["parent_culture"]),
+                    "founded_year": row["founded"] // 360,
+                    "ended_year": None if row["ended"] is None else row["ended"] // 360,
+                    "clans": 0 if alive is None else alive["clans"],
+                    "settlements": 0 if alive is None else alive["settlements"],
+                    "population": heads.get(row["id"], 0),
+                    "tiles": land.get(row["id"], 0),
+                    "consonants": sounds["c"],
+                    "vowels": sounds["v"],
+                    "words": json.loads(row["words"]),
+                }
+            )
+        out.sort(key=lambda item: (-item["population"], item["id"]))
+        return out
+
     @api.get("/worlds/{world_id}/places")
     def places(world_id: int, conn: Db, lang: Lang = default_language) -> list[dict[str, Any]]:
         """Settlements, lived in or abandoned, with everything that stands there."""
@@ -250,6 +308,7 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
                 "founded_year": row["founded"] // 360,
                 "abandoned_year": None if row["abandoned"] is None else row["abandoned"] // 360,
                 "group_id": row["group_id"],
+                "meaning": meaning_text(packs, row["meaning"], lang),
                 "buildings": built.get(row["id"], []),
             }
             for row in _rows(
@@ -262,9 +321,9 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
     def layer(world_id: int, layer: str, conn: Db) -> dict[str, Any]:
         """One changing layer: 'steps' or the current stock of a resource."""
         world_row(conn, world_id)
-        if layer == "steps":
+        if layer in ("steps", "territory"):
             found = conn.execute(
-                "SELECT data FROM tile_layers WHERE world_id = ? AND layer = 'steps'", (world_id,)
+                "SELECT data FROM tile_layers WHERE world_id = ? AND layer = ?", (world_id, layer)
             ).fetchone()
         else:
             found = conn.execute(
@@ -274,6 +333,31 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
         if found is None:
             raise HTTPException(404, f"Layer '{layer}' does not exist")
         return {"layer": layer, "values": _layer(found["data"])}
+
+    def held_land(conn: sqlite3.Connection, world_id: int) -> tuple[list[int], list[int]]:
+        """For every tile the clan that holds it and that clan's people, 0 for nobody."""
+        found = conn.execute(
+            "SELECT data FROM tile_layers WHERE world_id = ? AND layer = 'territory'", (world_id,)
+        ).fetchone()
+        if found is None:
+            return [], []
+        clans = _layer(found["data"])
+        people_of = {
+            row["id"]: row["culture"]
+            for row in _rows(
+                conn,
+                "SELECT id, culture FROM groups WHERE world_id = ? AND dissolved IS NULL",
+                (world_id,),
+            )
+        }
+        return clans, [people_of.get(clan, 0) for clan in clans]
+
+    @api.get("/worlds/{world_id}/territory")
+    def territory(world_id: int, conn: Db) -> dict[str, Any]:
+        """Who holds the land: per tile the clan and its people, row by row."""
+        world_row(conn, world_id)
+        clans, peoples_held = held_land(conn, world_id)
+        return {"clans": clans, "peoples": peoples_held}
 
     def group_out(conn: sqlite3.Connection, row: sqlite3.Row, language: Language) -> dict[str, Any]:
         place = None
@@ -299,9 +383,15 @@ def create_app(db_path: Path, packs: PackSet, default_language: Language = "de")
             "ORDER BY tick, technology",
             (row["world_id"], row["id"]),
         )
+        people = conn.execute(
+            "SELECT name FROM cultures WHERE world_id = ? AND id = ?",
+            (row["world_id"], row["culture"]),
+        ).fetchone()
         return {
             "id": row["id"],
             "name": row["name"],
+            "people_id": row["culture"],
+            "people": None if people is None else people["name"],
             "type": row["type"],
             "y": row["y"],
             "x": row["x"],

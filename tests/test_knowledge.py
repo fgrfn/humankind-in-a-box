@@ -24,6 +24,14 @@ FORGETFUL = (
     "life.knowledge_keepers: 1000\n"
     "life.knowledge_loss_chance_per_year: 0.1\n"
 )
+MANY_PEOPLES = (
+    "technologies.fire.base_chance_per_year: 0.03\n"
+    "technologies.shelter.base_chance_per_year: 0.03\n"
+    "technologies.shelter.requires: []\n"
+    "life.people_sound_distance: 1\n"
+    "life.people_emerge_chance_per_year: 0.2\n"
+    "life.people_join_chance_per_year: 0.2\n"
+)
 
 
 def world_with(settings: Settings, overrides: str) -> Settings:
@@ -98,10 +106,98 @@ def test_knowledge_can_be_lost_and_stays_on_record(tmp_path: Path, settings: Set
             assert set(world.packs.technologies[tech_id].requires) <= set(clan.techs)
 
 
-@pytest.mark.parametrize("overrides", [EARLY_FARMERS, FORGETFUL])
+def test_peoples_form_split_and_name_their_places(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, MANY_PEOPLES), 150, 3)
+    society = world.society
+    assert society is not None
+    assert len(society.cultures) > 1, "one people stayed one in a world built to part"
+    first = society.cultures[1]
+    assert first.parent == 0 and first.founded == 0
+    for culture in society.cultures.values():
+        assert culture.parent == 0 or culture.parent in society.cultures
+        assert culture.name
+        members = [clan for clan in society.clans.values() if clan.culture == culture.id]
+        assert bool(members) == (culture.ended is None), culture.name
+    assert all(clan.culture in society.cultures for clan in society.clans.values())
+
+    conn = sqlite3.connect(path)
+    stored = dict(conn.execute("SELECT id, name FROM cultures"))
+    assert stored == {culture.id: culture.name for culture in society.cultures.values()}
+    assert dict(conn.execute("SELECT id, culture FROM groups WHERE dissolved IS NULL")) == {
+        clan.id: clan.culture for clan in society.clans.values()
+    }
+    types = {row[0] for row in conn.execute("SELECT DISTINCT type FROM events")}
+    assert "people_emerged" in types
+    assert conn.execute(
+        "SELECT COUNT(*) FROM metrics WHERE key = 'people.population' AND scope_type = 'culture'"
+    ).fetchone()[0]
+
+    # A place is called after what is found there, in the words of its people.
+    places = list(society.places.values())
+    assert places, "somebody settles within 150 years in this world"
+    for place in places:
+        assert place["meaning"]
+        words = {word for culture in society.cultures.values() for word in culture.words.values()}
+        assert any(place["name"].startswith(word) for word in words), place["name"]
+    assert len({place["name"] for place in places}) == len(places)
+
+
+@pytest.mark.parametrize("overrides", [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES])
 def test_such_worlds_resume_identically(tmp_path: Path, settings: Settings, overrides: str) -> None:
     prepared = world_with(settings, overrides)
     simulate(tmp_path / "straight.sqlite", prepared, 110, 5)
     for years in (41, 23, 46):
         simulate(tmp_path / "resumed.sqlite", prepared, years, 5)
     assert table_digests(tmp_path / "resumed.sqlite") == table_digests(tmp_path / "straight.sqlite")
+
+
+def test_land_is_held_and_borders_follow_strength(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, MANY_PEOPLES), 120, 3)
+    society = world.society
+    assert society is not None
+    territory, land_people = society.territory, society.land_people
+    assert (territory > 0).any(), "nobody holds any land after 120 years"
+    assert not (territory[world.map.water] > 0).any(), "open water is nobody's"
+    holders = {int(clan_id) for clan_id in set(territory.ravel().tolist()) if clan_id}
+    assert holders <= set(society.clans), "only living clans hold land"
+    for clan_id in sorted(holders)[:20]:
+        clan = society.clans[clan_id]
+        ys, xs = (territory == clan_id).nonzero()
+        _strength, radius = society.hold(clan)
+        # Nothing is held beyond a clan's reach, and what it holds belongs to its people.
+        assert max(abs(ys - clan.y).max(), abs(xs - clan.x).max()) <= max(radius, 0) + 1
+        assert (land_people[ys, xs] == clan.culture).all()
+
+    # A stronger clan reaches further than a weaker one.
+    clans = sorted(society.clans.values(), key=lambda clan: society.hold(clan)[0])
+    assert society.hold(clans[-1])[1] >= society.hold(clans[0])[1]
+
+    conn = sqlite3.connect(path)
+    stored = conn.execute("SELECT data FROM tile_layers WHERE layer = 'territory'").fetchone()[0]
+    assert stored == territory.astype("<i4").tobytes()
+    assert (
+        conn.execute(
+            "SELECT MAX(value) FROM metrics WHERE key = 'territory.tiles' AND scope_type = 'world'"
+        ).fetchone()[0]
+        > 0
+    )
+
+
+def test_strangers_gather_less_on_held_land(settings: Settings) -> None:
+    packs = load_packs(settings.packs, settings.data_dir)
+    from hiab.sim.engine import World
+
+    def gathered(foreign: bool) -> int:
+        world = World.create(1, 9, packs, 48, 48, 45)
+        society = world.society
+        assert society is not None
+        clan = next(iter(society.clans.values()))
+        if foreign:
+            society.land_people[:] = clan.culture + 1
+        clan.food = 0
+        society.forage(clan)
+        return clan.food
+
+    assert 0 < gathered(foreign=True) < gathered(foreign=False)
