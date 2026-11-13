@@ -444,6 +444,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
     if (!element) return;
     const app = new Application();
     let disposed = false;
+    let resizer: ResizeObserver | null = null;
     const pointers = new Map<number, { x: number; y: number }>();
     let pinch = 0;
     let moved = 0;
@@ -533,10 +534,17 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         canvas.addEventListener("pointerleave", release);
         (camps as Container & { wasDragged?: () => boolean }).wasDragged = () => moved > 6;
         crowd.current.wasDragged = () => moved > 6;
+        // The map's box changes not only with the window: rows above it appear
+        // once the first numbers arrive, panels open and close. Follow the box.
+        resizer = new ResizeObserver(() => {
+          if (!disposed) app.resize();
+        });
+        resizer.observe(element);
       });
 
     return () => {
       disposed = true;
+      resizer?.disconnect();
       const current = scene.current;
       scene.current = null;
       if (current) current.app.destroy(true, { children: true });
@@ -1136,7 +1144,8 @@ export function MapView({ active, map, steps, groups, places, people, land, land
       const [cx, cy] = project(target.x, target.y);
       const world = current.world;
       const from = { x: world.position.x, y: world.position.y, scale: world.scale.x };
-      const scale = Math.max(from.scale, 2);
+      // Close enough to see the people at work, but never further out than one was.
+      const scale = Math.max(from.scale, 2.8);
       // Centre in the part of the map that is not covered by a drawer, panel or the chronicle.
       const box = host.current?.getBoundingClientRect();
       let left = 0;
