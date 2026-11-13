@@ -95,7 +95,7 @@ function diamond(g: Graphics, x: number, y: number, inset = 0): void {
 function fitLabels(camps: Container, scale: number): void {
   for (const marker of camps.children) {
     for (const child of (marker as Container).children) {
-      if (child instanceof Text) {
+      if (child.label === "tag" || child instanceof Text) {
         child.visible = scale >= 0.8;
         child.scale.set(1.05 / scale);
       }
@@ -136,7 +136,7 @@ interface Band {
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 const REACH = 5;
-const WALK_SPEED = 0.9; // tiles per second
+const WALK_SPEED = 0.6; // tiles per second
 const FIGURE_SCALE = SPRITE_SCALE * 0.5;
 
 function figureFor(person: Human, band: Band): string {
@@ -283,7 +283,13 @@ class Crowd {
         if (walker.clan !== person.clan || moved.has(person.clan)) {
           // A new camp, or a new clan: walk straight there from wherever one stands.
           const [fx, fy] = this.where(walker);
-          walker.path = [[fx, fy], [band.x, band.y]];
+          // Straight to the new camp only over land; across water they simply arrive.
+          const steps = Math.ceil(Math.max(Math.abs(band.x - fx), Math.abs(band.y - fy)));
+          let overLand = steps <= 12;
+          for (let n = 1; overLand && n < steps; n++) {
+            overLand = this.dry(Math.round(fx + ((band.x - fx) * n) / steps), Math.round(fy + ((band.y - fy) * n) / steps));
+          }
+          walker.path = overLand ? [[fx, fy], [band.x, band.y]] : [[band.x, band.y]];
           walker.leg = 0;
           walker.along = 0;
           walker.task = "back";
@@ -317,11 +323,11 @@ class Crowd {
       let lift = 0;
       if (walker.task === "rest" || walker.task === "work") {
         walker.wait -= seconds;
-        if (walker.task === "work") lift = Math.abs(Math.sin(walker.clock * 5)) * 1.2;
+        // Calm motion: a slow bend at work, a turn now and then in a fight.
+        if (walker.task === "work") lift = Math.abs(Math.sin(walker.clock * 2.6)) * 0.6;
         if (walker.task === "work" && walker.person.activity.startsWith("fight:")) {
-          // At the field: lunging back and forth.
-          lift = Math.abs(Math.sin(walker.clock * 11)) * 2;
-          walker.sprite.scale.x = Math.sin(walker.clock * 2.3 + walker.dx) > 0 ? FIGURE_SCALE : -FIGURE_SCALE;
+          lift = Math.abs(Math.sin(walker.clock * 4)) * 0.9;
+          walker.sprite.scale.x = Math.sin(walker.clock * 0.7 + walker.dx) > 0 ? FIGURE_SCALE : -FIGURE_SCALE;
         }
         if (walker.wait <= 0) {
           if (walker.task === "work") {
@@ -351,7 +357,7 @@ class Crowd {
         const b = walker.path[Math.min(walker.leg + 1, walker.path.length - 1)];
         const length = Math.max(0.5, Math.hypot(b[0] - a[0], b[1] - a[1]));
         walker.along += (seconds * WALK_SPEED) / length;
-        lift = Math.abs(Math.sin(walker.clock * 9)) * 0.7;
+        lift = Math.abs(Math.sin(walker.clock * 6)) * 0.35;
         const heading = b[0] - a[0] - (b[1] - a[1]); // on screen: positive walks right
         if (heading !== 0) walker.sprite.scale.x = heading > 0 ? FIGURE_SCALE : -FIGURE_SCALE;
         if (walker.along >= 1) {
@@ -359,7 +365,7 @@ class Crowd {
           walker.leg += 1;
           if (walker.leg >= walker.path.length - 1) {
             walker.leg = walker.path.length - 1;
-            walker.wait = walker.task === "out" ? 6 + Math.random() * 10 : 4 + Math.random() * 14;
+            walker.wait = walker.task === "out" ? 10 + Math.random() * 14 : 8 + Math.random() * 20;
             walker.task = walker.task === "out" ? "work" : "rest";
           }
         }
@@ -393,6 +399,14 @@ interface Scene {
   natureAt: Map<number, Sprite>;
 }
 
+// Where to send the camera: a clan, or a tile.
+export interface Focus {
+  nonce: number;
+  id?: number;
+  y?: number;
+  x?: number;
+}
+
 interface Props {
   map: WorldMap | null;
   steps: number[];
@@ -407,7 +421,7 @@ interface Props {
   links: TradeLink[];
   active: boolean;
   selected: number | null;
-  focus: { id: number; nonce: number } | null;
+  focus: Focus | null;
   onSelect: (id: number) => void;
   onPerson: (id: number) => void;
 }
@@ -418,6 +432,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
   const ready = useRef<Promise<void> | null>(null);
   const placed = useRef(false);
   const crowd = useRef(new Crowd());
+  const campsAt = useRef(new Map<number, [number, number]>());
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   crowd.current.onTap = onPerson;
@@ -914,10 +929,20 @@ export function MapView({ active, map, steps, groups, places, people, land, land
       if (!current) return;
       const layer = current.camps as Container & { wasDragged?: () => boolean };
       for (const child of layer.removeChildren()) child.destroy({ children: true });
+      const before = campsAt.current;
+      const now = new Map<number, [number, number]>();
+      const gliding: [Container, number, number, number, number][] = [];
       for (const group of [...groups].sort((a, b) => a.y + a.x - (b.y + b.x))) {
         const [cx, cy] = project(group.x, group.y);
         const marker = new Container();
         marker.position.set(cx, cy + TILE_H / 2);
+        now.set(group.id, [cx, cy + TILE_H / 2]);
+        const was = before.get(group.id);
+        if (was && (was[0] !== cx || was[1] !== cy + TILE_H / 2)) {
+          // A camp that moved glides to its new place instead of jumping.
+          gliding.push([marker, was[0], was[1], cx, cy + TILE_H / 2]);
+          marker.position.set(was[0], was[1]);
+        }
         const g = new Graphics();
         const chosen = group.id === selected;
         if (chosen) g.ellipse(0, 0, 13, 6.5).stroke({ color: 0xffffff, width: 1.5 });
@@ -959,20 +984,25 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           }
         }
         marker.addChild(g);
+        // A name plate: dark ground, framed in the colour of the people; a
+        // chiefdom's clans carry its colour as a band on the left.
+        const tag = new Container();
+        tag.label = "tag";
+        tag.position.set(0, -14);
         const label = new Text({
           text: `${group.settled && group.place ? group.place : group.name} ${group.population}`,
-          style: { fontFamily: "'Barlow Semi Condensed', system-ui, sans-serif", fontSize: 11, fontWeight: "500", fill: 0xf2efe6, stroke: { color: 0x10242d, width: 3 } },
+          style: { fontFamily: "'Barlow Semi Condensed', system-ui, sans-serif", fontSize: 11, fontWeight: "600", fill: 0xf2efe6 },
         });
         label.anchor.set(0.5, 1);
-        label.position.set(0, -16);
         label.resolution = 3;
-        marker.addChild(label);
-        // A small flag in the colour of the people the clan belongs to. The
-        // name of the people is in the clan's detail; the colour only groups.
-        const flag = new Graphics();
-        flag.poly([0, -3.2, 3.2, 0, 0, 3.2, -3.2, 0]).fill(peopleColour(group.people_id)).stroke({ color: 0x10242d, width: 1 });
-        flag.position.set(0, -12.5);
-        marker.addChild(flag);
+        const band = group.realm ? 5 : 0;
+        const width = label.width + 10 + band;
+        const plate = new Graphics();
+        plate.roundRect(-width / 2, -label.height - 3, width, label.height + 4, 3).fill({ color: 0x10242d, alpha: 0.88 }).stroke({ color: peopleColour(group.people_id), width: 1.4 });
+        if (group.realm) plate.rect(-width / 2 + 1.5, -label.height - 1.5, 3.5, label.height + 1).fill(realmColour(group.realm.id));
+        label.position.set(band / 2, 0);
+        tag.addChild(plate, label);
+        marker.addChild(tag);
         marker.eventMode = "static";
         marker.cursor = "pointer";
         marker.hitArea = { contains: (x: number, y: number) => Math.abs(x) < 12 && y > -24 && y < 6 };
@@ -982,6 +1012,20 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         layer.addChild(marker);
       }
       fitLabels(layer, current.world.scale.x);
+      campsAt.current = now;
+      if (gliding.length) {
+        const start = performance.now();
+        const frame = (time: number) => {
+          const t = Math.min(1, (time - start) / 2500);
+          const ease = t * t * (3 - 2 * t);
+          for (const [marker, x0, y0, x1, y1] of gliding) {
+            if (marker.destroyed) return;
+            marker.position.set(x0 + (x1 - x0) * ease, y0 + (y1 - y0) * ease);
+          }
+          if (t < 1) requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }
     });
   }, [groups, selected, wars]);
 
@@ -1030,13 +1074,44 @@ export function MapView({ active, map, steps, groups, places, people, land, land
     if (!focus) return;
     void ready.current?.then(() => {
       const current = scene.current;
-      const group = groups.find((item) => item.id === focus.id);
-      if (!current || !group) return;
-      const [cx, cy] = project(group.x, group.y);
-      const scale = Math.max(current.world.scale.x, 2);
-      current.world.scale.set(scale);
-      current.world.position.set(current.app.screen.width / 2 - cx * scale, current.app.screen.height / 2 - cy * scale);
-      fitLabels(current.camps, scale);
+      const group = focus.id === undefined ? undefined : groups.find((item) => item.id === focus.id);
+      const target = group ? { x: group.x, y: group.y } : focus.x !== undefined && focus.y !== undefined ? { x: focus.x, y: focus.y } : null;
+      if (!current || !target) return;
+      const [cx, cy] = project(target.x, target.y);
+      const world = current.world;
+      const from = { x: world.position.x, y: world.position.y, scale: world.scale.x };
+      const scale = Math.max(from.scale, 2);
+      // Centre in the part of the map that is not covered by a drawer, panel or the chronicle.
+      const box = host.current?.getBoundingClientRect();
+      let left = 0;
+      let right = current.app.screen.width;
+      if (box && box.width > 820) {
+        for (const selector of [".drawer", ".inspector"]) {
+          const cover = document.querySelector(selector)?.getBoundingClientRect();
+          if (cover && cover.left - box.left < box.width / 2) left = Math.max(left, cover.right - box.left);
+        }
+        const ledger = document.querySelector(".ledger.open")?.getBoundingClientRect();
+        if (ledger) right = Math.min(right, ledger.left - box.left);
+      }
+      if (right - left < 200) {
+        left = 0;
+        right = current.app.screen.width;
+      }
+      const to = { x: (left + right) / 2 - cx * scale, y: current.app.screen.height / 2 - cy * scale - (TILE_H * scale) / 2 };
+      // A short glide rather than a jump, so one sees where one went.
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const duration = reduce ? 0 : 650;
+      const start = performance.now();
+      const frame = (now: number) => {
+        const t = duration === 0 ? 1 : Math.min(1, (now - start) / duration);
+        const ease = 1 - Math.pow(1 - t, 3);
+        const s = from.scale + (scale - from.scale) * ease;
+        world.scale.set(s);
+        world.position.set(from.x + (to.x - from.x) * ease, from.y + (to.y - from.y) * ease);
+        if (t < 1) requestAnimationFrame(frame);
+        else fitLabels(current.camps, scale);
+      };
+      requestAnimationFrame(frame);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);

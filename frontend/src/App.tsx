@@ -4,7 +4,7 @@ import { Chart, SERIES_COLOURS, type Point } from "./Chart";
 import { HistoryBand, type Mark } from "./HistoryBand";
 import { formatNumber, translator, type TextKey } from "./i18n";
 import { peopleCss, realmCss } from "./colours";
-import { MapView } from "./MapView";
+import { MapView, type Focus } from "./MapView";
 
 type View = "map" | "numbers" | "clans";
 type Translate = (key: TextKey) => string;
@@ -66,8 +66,9 @@ const BANNER_TITLES: Record<string, TextKey> = {
   realm_founded: "bannerRealm",
 };
 
-function Chronicle({ events, t, minImportance, setMinImportance, explain, extinct }: {
+function Chronicle({ events, t, minImportance, setMinImportance, explain, extinct, locate }: {
   events: WorldEvent[];
+  locate: (event: WorldEvent) => (() => void) | null;
   t: Translate;
   minImportance: number;
   setMinImportance: (level: number) => void;
@@ -98,9 +99,19 @@ function Chronicle({ events, t, minImportance, setMinImportance, explain, extinc
                   {t("year")} {event.year}
                 </span>
               ) : null}
-              <button onClick={() => explain(event)} title={t("why")}>
-                {event.text}
-              </button>
+              {(() => {
+                const go = locate(event);
+                return (
+                  <span className="event-row">
+                    <button className={go ? "event-go" : ""} onClick={() => (go ? go() : explain(event))} title={go ? t("showOnMap") : t("why")}>
+                      {event.text}
+                    </button>
+                    <button className="event-why" onClick={() => explain(event)} aria-label={t("why")} title={t("why")}>
+                      ?
+                    </button>
+                  </span>
+                );
+              })()}
             </li>
           );
         })}
@@ -109,7 +120,7 @@ function Chronicle({ events, t, minImportance, setMinImportance, explain, extinc
   );
 }
 
-function Numbers({ stats, series, discoveries, peoples, realms, wars, worldStores, lang, t }: { stats: Stats; series: Series; discoveries: Discovery[]; peoples: People[]; realms: Realm[]; wars: War[]; worldStores: { id: string; name: string; amount: number }[]; lang: Lang; t: Translate }) {
+function Numbers({ stats, series, discoveries, peoples, realms, wars, worldStores, lang, t, onRealm, onWar }: { stats: Stats; series: Series; discoveries: Discovery[]; peoples: People[]; realms: Realm[]; wars: War[]; worldStores: { id: string; name: string; amount: number }[]; lang: Lang; t: Translate; onRealm: (seat: number) => void; onWar: (y: number, x: number) => void }) {
   const points = (key: string): Point[] => series[key] ?? [];
   const fed = useMemo(() => {
     const needed = new Map((series["food.needed"] ?? []).map((point) => [point.year, point.value]));
@@ -244,7 +255,13 @@ function Numbers({ stats, series, discoveries, peoples, realms, wars, worldStore
             <li key={item.id} className={standing ? "" : "gone"}>
               <span className="name">
                 <i className="chip" style={{ background: realmCss(item.id) }} aria-hidden="true" />
-                {item.name}
+                {standing ? (
+                  <button className="plain" onClick={() => onRealm(item.seat_id)}>
+                    {item.name}
+                  </button>
+                ) : (
+                  item.name
+                )}
               </span>
               <span className="bar" aria-hidden="true">
                 <span style={{ width: `${(100 * item.population) / largest}%`, background: realmCss(item.id) }} />
@@ -277,9 +294,11 @@ function Numbers({ stats, series, discoveries, peoples, realms, wars, worldStore
           return (
             <li key={war.id} className={war.ended_year === null ? "ongoing" : ""}>
               <span className="name">
-                <i className="chip" style={{ background: realmCss(war.attacker.id) }} aria-hidden="true" />
-                {war.attacker.name} {t("against")} <i className="chip" style={{ background: realmCss(war.defender.id) }} aria-hidden="true" />
-                {war.defender.name}
+                <button className="plain" disabled={!war.field} onClick={() => war.field && onWar(war.field.y, war.field.x)}>
+                  <i className="chip" style={{ background: realmCss(war.attacker.id) }} aria-hidden="true" />
+                  {war.attacker.name} {t("against")} <i className="chip" style={{ background: realmCss(war.defender.id) }} aria-hidden="true" />
+                  {war.defender.name}
+                </button>
               </span>
               <span className="state">
                 {t("year")} {war.started_year}
@@ -366,9 +385,10 @@ function TimeControl({ lang, t, onFast }: { lang: Lang; t: Translate; onFast: (f
         </button>
       ))}
       <button onClick={() => void ask({ speed: 0, for_years: 10, paused: false })}>{t("tenYears")}</button>
+      {/* A fixed box, two short lines, so the buttons never shift when the text changes. */}
       <span className="rate" aria-live="polite">
-        {shown}
-        {speed.until_year ? `, ${t("untilYear")} ${speed.until_year}` : ""}
+        <span>{shown}</span>
+        <span className="until">{speed.until_year ? `${t("untilYear")} ${speed.until_year}` : ""}</span>
       </span>
       {asking ? (
         <form
@@ -774,7 +794,7 @@ export function App() {
   const [minImportance, setMinImportance] = useState(3);
   const [selected, setSelected] = useState<number | null>(null);
   const [detail, setDetail] = useState<Group | null>(null);
-  const [focus, setFocus] = useState<{ id: number; nonce: number } | null>(null);
+  const [focus, setFocus] = useState<Focus | null>(null);
   const [why, setWhy] = useState<Why | null>(null);
   const newestSeq = useRef(-1);
 
@@ -951,17 +971,43 @@ export function App() {
     [worldId, lang],
   );
 
+  // The map stays under the other views, so showing something on it never
+  // means switching back by hand.
   const showOnMap = useCallback((id: number) => {
-    setView("map");
     setFocus({ id, nonce: Date.now() });
   }, []);
+  const showTile = useCallback((y: number, x: number) => {
+    setFocus({ y, x, nonce: Date.now() });
+  }, []);
+
+  // Where an event happened, if it can be shown: a war's field, a chiefdom's
+  // seat, a clan, or the clan of a person.
+  const locate = useCallback(
+    (event: WorldEvent): (() => void) | null => {
+      const data = event.data;
+      const num = (key: string) => (typeof data[key] === "number" ? (data[key] as number) : null);
+      const war = num("war_id") === null ? undefined : wars.find((item) => item.id === num("war_id"));
+      if (war?.field) return () => showTile(war.field!.y, war.field!.x);
+      const clanId = num("clan_id");
+      if (clanId !== null && groups.some((group) => group.id === clanId)) return () => showOnMap(clanId);
+      for (const key of ["realm_id", "enemy_id", "to_id", "winner_id"]) {
+        const realm = num(key) === null ? undefined : realms.find((item) => item.id === num(key) && item.ended_year === null);
+        if (realm) return () => showOnMap(realm.seat_id);
+      }
+      const personId = num("person");
+      const home = personId === null ? undefined : people.find((item) => item.id === personId);
+      if (home) return () => showOnMap(home.clan);
+      return null;
+    },
+    [wars, groups, realms, people, showOnMap, showTile],
+  );
 
   const sortedGroups = useMemo(() => [...groups].sort((a, b) => b.population - a.population || a.id - b.id), [groups]);
   const extinct = stats !== null && stats.population === 0 && stats.ever_lived > 0;
   const views: View[] = ["map", "numbers", "clans"];
 
   return (
-    <div className={`app view-${view}`}>
+    <div className={`app view-${view} ${view === "map" ? "" : "drawer-open"}`}>
       <header className="top">
         <div className="brand">
           <BoxGlyph />
@@ -999,11 +1045,33 @@ export function App() {
         </div>
       </header>
 
+      {stats ? (
+        <dl className="tally" aria-label={t("tallyLabel")}>
+          {(
+            [
+              ["tallyPeople", stats.population],
+              ["clans", stats.clans],
+              ["tallyPeoples", stats.peoples],
+              ["realms", stats.realms ?? 0],
+              ["tallyBorn", stats.births_total],
+              ["tallyDied", stats.deaths_total],
+              ["warsNow", stats.wars_ongoing ?? 0],
+              ["tallyKnown", stats.discoveries],
+            ] as [TextKey, number][]
+          ).map(([key, value]) => (
+            <div key={key}>
+              <dt>{t(key)}</dt>
+              <dd>{formatNumber(value, lang)}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+
       <HistoryBand population={series["people.population"] ?? []} marks={marks} lang={lang} yearLabel={t("year")} peopleLabel={t("people")} emptyLabel={t("historyEmpty")} />
 
       <main>
-        <div className={`stage ${view === "map" ? "" : "away"}`} aria-hidden={view !== "map"}>
-          <MapView active={view === "map"} map={map} steps={steps} groups={groups} places={places} people={people} land={landBy === "off" ? null : land} landBy={landBy === "realms" ? "realms" : "peoples"} realms={realms} wars={wars} year={stats?.year ?? 0} links={showTrade ? links : []} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
+        <div className="stage">
+          <MapView active map={map} steps={steps} groups={groups} places={places} people={people} land={landBy === "off" ? null : land} landBy={landBy === "realms" ? "realms" : "peoples"} realms={realms} wars={wars} year={stats?.year ?? 0} links={showTrade ? links : []} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
           {banner ? (
             <div key={banner.seq} className={`banner ${banner.kind}`} role="status" onClick={() => setBanner(null)}>
               <strong>{t(BANNER_TITLES[banner.kind])}</strong>
@@ -1053,6 +1121,42 @@ export function App() {
               ) : null}
             </aside>
           ) : null}
+          {view === "numbers" && stats ? (
+            <section className="drawer" aria-label={t("numbers")}>
+              <button className="inspector-close" aria-label={t("close")} onClick={() => setView("map")}>×</button>
+              <Numbers stats={stats} series={series} discoveries={discoveries} peoples={peoples} realms={realms} wars={wars} worldStores={worldStores} lang={lang} t={t} onRealm={(id) => showOnMap(id)} onWar={(y, x) => showTile(y, x)} />
+            </section>
+          ) : null}
+
+          {view === "clans" ? (
+            <section className="drawer clans-page" aria-label={t("clans")}>
+              <button className="inspector-close" aria-label={t("close")} onClick={() => setView("map")}>×</button>
+              <ul className="clans">
+                {sortedGroups.map((group) => (
+                  <li key={group.id}>
+                    <button
+                      className={group.id === selected ? "on" : ""}
+                      onClick={() => {
+                        setPerson(null);
+                        setSelected(group.id);
+                        setPanelOpen(true);
+                        showOnMap(group.id);
+                      }}
+                    >
+                      <span className="clan-name">{group.name}</span>
+                      <span className="clan-where">
+                        {group.people ? <i className="chip" style={{ background: peopleCss(group.people_id) }} aria-hidden="true" /> : null}
+                        {group.people ? `${group.people}, ` : ""}
+                        {group.settled ? (group.place ?? t("settled")) : t("wandering")}
+                      </span>
+                      <span className="clan-count">{group.population}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
           <aside className={`ledger ${ledgerOpen ? "open" : ""}`} aria-label={t("chronicle")}>
             <button className="ledger-head" onClick={() => setLedgerOpen((open) => !open)} aria-expanded={ledgerOpen} title={ledgerOpen ? t("hideChronicle") : t("showChronicle")}>
               <span className="ledger-title">{t("chronicle")}</span>
@@ -1063,34 +1167,12 @@ export function App() {
             </button>
             {ledgerOpen ? (
               <div className="ledger-body">
-                <Chronicle events={events} t={t} minImportance={minImportance} setMinImportance={setMinImportance} explain={explain} extinct={extinct} />
+                <Chronicle events={events} t={t} minImportance={minImportance} setMinImportance={setMinImportance} explain={explain} extinct={extinct} locate={locate} />
               </div>
             ) : null}
           </aside>
         </div>
 
-        {view === "numbers" && stats ? <Numbers stats={stats} series={series} discoveries={discoveries} peoples={peoples} realms={realms} wars={wars} worldStores={worldStores} lang={lang} t={t} /> : null}
-
-        {view === "clans" ? (
-          <div className="page clans-page">
-            <ul className="clans">
-              {sortedGroups.map((group) => (
-                <li key={group.id}>
-                  <button className={group.id === selected ? "on" : ""} onClick={() => setSelected(group.id)}>
-                    <span className="clan-name">{group.name}</span>
-                    <span className="clan-where">
-                      {group.people ? <i className="chip" style={{ background: peopleCss(group.people_id) }} aria-hidden="true" /> : null}
-                      {group.people ? `${group.people}, ` : ""}
-                      {group.settled ? (group.place ?? t("settled")) : t("wandering")}
-                    </span>
-                    <span className="clan-count">{group.population}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {detail ? <ClanDetail detail={detail} t={t} lang={lang} onShow={() => showOnMap(detail.id)} onPerson={showPerson} onClan={setSelected} /> : <p className="note pick">{t("pickClan")}</p>}
-          </div>
-        ) : null}
       </main>
 
       <nav className="tabbar" aria-label="Views">
