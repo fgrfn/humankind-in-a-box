@@ -181,9 +181,13 @@ class LifeParams(_Model):
     ruin_chance_per_year: float = Field(0.15, ge=0.0, le=1.0)
     builders_share_percent: int = Field(25, ge=1, le=100)
     # Knowledge is kept by people. A group with too few adults, or one that has
-    # lost what a craft needs, can forget what nothing else it knows builds on.
+    # been without what a craft needs for a generation, can forget what nothing
+    # else it knows builds on. Neighbours of the same people or chiefdom who
+    # still know it keep it alive.
     knowledge_keepers: int = Field(6, ge=0, le=1000)
     knowledge_loss_chance_per_year: float = Field(0.015, ge=0.0, le=1.0)
+    knowledge_unused_years: int = Field(40, ge=0, le=10000)
+    knowledge_reminded_factor: float = Field(0.1, ge=0.0, le=1.0)
     # Peoples. A clan whose speech has moved this many sounds away from that of
     # its people may found a people of its own; a clan alone among strangers may
     # join them.
