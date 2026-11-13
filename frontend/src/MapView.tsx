@@ -1088,7 +1088,8 @@ export function MapView({ active, map, steps, groups, places, people, land, land
       const [cx, cy] = project(target.x, target.y);
       const world = current.world;
       const from = { x: world.position.x, y: world.position.y, scale: world.scale.x };
-      const scale = Math.max(from.scale, 2);
+      // Close enough to see the people at work, but never further out than one was.
+      const scale = Math.max(from.scale, 2.8);
       // Centre in the part of the map that is not covered by a drawer, panel or the chronicle.
       const box = host.current?.getBoundingClientRect();
       let left = 0;
