@@ -377,8 +377,22 @@ each at most as wide as its diamond, same scale as the huts in the reference:
 7 bronze smithy: small open workshop with a clay furnace glowing orange, an anvil stone and a bellows.
 8 crop field: small fenced patch of ripe golden grain in rows.
 
-ANIMALS 1, each on a grass ground diamond: deer, boar, wolf, bear, mammoth, aurochs, wild horse, bird of prey,
-each in side view facing right. (Second sheet later: sheep, goat, cow, dog, horse, chicken, rabbit, fish.)
+ANIMALS 1, wild animals of the stone age, each on a grass ground diamond, each in side view facing right,
+sized relative to the people in the reference (a deer about as tall as a person, a mammoth twice as tall),
+simple readable silhouettes, each at most as wide as its diamond:
+1 red deer stag with antlers. 2 wild boar. 3 grey wolf. 4 brown bear on all fours.
+5 woolly mammoth. 6 aurochs, dark wild bull with long curved horns. 7 wild horse, stocky and dun-coloured.
+8 a small flock of three wild geese on the ground.
+(names: deer, boar, wolf, bear, mammoth, aurochs, wild_horse, geese)
+
+ANIMALS 2, tame animals and herding of the late stone age to bronze age, each on a grass ground diamond,
+each in side view facing right, sized relative to the people in the reference, simple readable silhouettes,
+each at most as wide as its diamond:
+1 three sheep standing together, woolly and off-white. 2 two goats, brown and white.
+3 a cow, brown with short horns. 4 a dog, lean, sandy coloured, standing alert.
+5 a tame horse with a simple rope halter. 6 a herder with a long crook stick and a cloak, walking.
+7 a raider on horseback with a spear. 8 a small round pen of woven wattle fence, empty inside.
+(names: sheep, goats, cow, dog, tame_horse, herder, raider, pen)
 ```
 
 ## 16. Bauplan

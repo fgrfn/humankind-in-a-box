@@ -127,7 +127,7 @@ herding:
   requires: [dog]
   base_chance_per_year: 0.0002
   factors: {settled: 2.0, well_fed: 1.5}
-  effects: {harvest_percent: {soil: 20, game: 10}, mortality_percent: 99, group_adults: 6}
+  effects: {harvest_percent: {game: 10}, mortality_percent: 99, group_adults: 6, keeps_herds: true}
 granary:
   name: {de: Kornspeicher, en: Granary}
   requires: [farming, pottery]
@@ -225,3 +225,9 @@ sailing:
   base_chance_per_year: 0.0003
   factors: {coastal: 2.0, curious: 1.5}
   effects: {harvest_percent: {fish: 30}}
+horse_riding:
+  name: {de: Reiten, en: Horse riding}
+  requires: [herding]
+  base_chance_per_year: 0.0002
+  factors: {well_fed: 1.5}
+  effects: {war_percent: 20, raid_percent: 200}

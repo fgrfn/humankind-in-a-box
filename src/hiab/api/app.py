@@ -192,6 +192,9 @@ def create_app(
                 "WHERE world_id = ? AND dissolved IS NULL"
             ),
             "realms": one("SELECT COUNT(*) FROM realms WHERE world_id = ? AND ended IS NULL"),
+            "herds": one(
+                "SELECT COALESCE(SUM(herd), 0) FROM groups WHERE world_id = ? AND dissolved IS NULL"
+            ),
             "lands": one(
                 "SELECT COUNT(*) FROM realms "
                 "WHERE world_id = ? AND ended IS NULL AND land_since IS NOT NULL"
@@ -242,7 +245,7 @@ def create_app(
             # map can show woods and bushes thinning out and growing back.
             "capacity": {
                 resource: dict(sorted(packs.resources[resource].capacity.items()))
-                for resource in ("wood", "plants")
+                for resource in ("wood", "plants", "game")
                 if resource in packs.resources
             },
             "deposits": [
@@ -848,6 +851,7 @@ def create_app(
                 "seat": realm["seat_group"] == row["id"],
                 "land": realm["land_since"] is not None,
             },
+            "herd": row["herd"],
             "type": row["type"],
             "y": row["y"],
             "x": row["x"],

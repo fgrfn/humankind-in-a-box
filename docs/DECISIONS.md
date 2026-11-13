@@ -64,3 +64,10 @@ The owner wants a life simulation: people who visibly do things. Decision: the m
 - Decisions that belong to the land are made once a year at the seat: forming the land, sharing out food, war. Faith follows the seat strongly. Daily work stays with each village.
 - Food is shared in proportion to each village's monthly need, without dice. What rounding leaves goes to the seat. This is the "shared store per realm" from the plan; other goods stay with each village for now.
 - Free clans stay possible at the edges (foragers and newcomers). They are drawn into lands rather than forced in.
+
+## 2026-11-13: herds and raids
+
+- A herd is a number of head per clan, not individual animals. The kind of animal shown on the map follows the herd's size and is display only.
+- What herds graze is named in the data pack (`herd_grazes`), so the core knows no concrete resource. Herding no longer adds to the soil harvest; the herd itself is the gain.
+- Herds start when the knowledge is learned (from the founding knowledge too) and never from nothing again, so a herd eaten or lost stays lost until it is raided or plundered back.
+- Raids are clan against clan and short, unlike wars between chiefdoms: one roll whether to ride out, one for the outcome, one dead on the losing side. Raid deaths have their own cause so war statistics stay exact.

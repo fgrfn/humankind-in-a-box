@@ -33,3 +33,9 @@ sheets:
   - file: sheets/buildings-3.png
     kind: object
     cells: [shrine, stone_circle, altar_stone, totem_pole, healer_hut, sacred_fire, burial_cairns, sacred_tree]
+  - file: sheets/animals-1.png
+    kind: figure
+    cells: [deer, boar, wolf, bear, mammoth, aurochs, wild_horse, geese]
+  - file: sheets/animals-2.png
+    kind: figure
+    cells: [sheep, goats, cow, dog, tame_horse, herder, raider, pen]
