@@ -374,7 +374,6 @@ class Crowd {
         walker = { sprite, person, clan: person.clan, path: [[band.x, band.y]], leg: 0, along: 0, task: "rest", wait: Math.random() * 20, clock: Math.random() * 10, dx: (Math.random() - 0.5) * 12, dy: (Math.random() - 0.5) * 5 };
         this.walkers.set(person.id, walker);
       } else {
-        if (walker.sprite.texture !== texture) walker.sprite.texture = texture;
         if (walker.clan !== person.clan || moved.has(person.clan)) {
           // A new camp, or a new clan: walk straight there from wherever one stands.
           const [fx, fy] = this.where(walker);
@@ -476,10 +475,14 @@ class Crowd {
       const spread = walker.task === "rest" ? 1 : 0.5;
       walker.sprite.position.set(sx + walker.dx * spread, sy + TILE_H / 2 + 2 + walker.dy * spread - lift);
       walker.sprite.zIndex = sy + walker.dy;
-      // Who fishes from a boat sits in a canoe once on the water.
-      if (walker.person.activity === "fish" && this.sheet) {
+      // Whoever is out on the water sits in a canoe, whatever the new month's
+      // work will be; back on land they are themselves again.
+      if (this.sheet) {
         const afloat = !this.dry(Math.round(fx), Math.round(fy)) && band.techs.has("boats");
-        const texture = afloat ? this.sheet.textures.canoe_fisher : this.sheet.textures.fisher;
+        const figure = figureFor(walker.person, band);
+        const texture = afloat
+          ? this.sheet.textures.canoe_fisher
+          : this.sheet.textures[figure] ?? this.sheet.textures[STAND_INS[figure] ?? "man"] ?? this.sheet.textures.man;
         if (texture && walker.sprite.texture !== texture) {
           walker.sprite.texture = texture;
           walker.sprite.scale.set(afloat ? FIGURE_SCALE * 1.3 : FIGURE_SCALE);
