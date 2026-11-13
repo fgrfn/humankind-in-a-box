@@ -69,6 +69,7 @@ class Clan:
     leader: int = 0  # the adult the clan follows
     realm: int = 0  # the chiefdom the clan belongs to, 0 for none
     partners: dict[int, int] = field(default_factory=dict)  # trading partner -> since tick
+    unused: dict[str, int] = field(default_factory=dict)  # technology -> tick it fell out of use
     # Goods besides food, by resource. And what came and went this year and
     # last, by good ("food" included): [gained, used, traded in, traded out].
     stores: dict[str, int] = field(default_factory=dict)
@@ -1839,21 +1840,46 @@ class Society:
             for required in packs.technologies[tech_id].requires
         }
         few = len(adults) < p.knowledge_keepers
+        neighbours: list[Clan] | None = None
         for tech_id in sorted(clan.techs):
             tech = packs.technologies.get(tech_id)
-            if tech is None or tech_id in needed:
+            if tech is None:
                 continue
-            unused = any(not self.nearby(clan, resource) for resource in tech.needs_nearby)
+            missing = any(not self.nearby(clan, resource) for resource in tech.needs_nearby)
+            if not missing:
+                clan.unused.pop(tech_id, None)
+            elif tech_id not in clan.unused:
+                clan.unused[tech_id] = world.tick
+            if tech_id in needed:
+                continue
+            # Out of use only counts once a generation has grown up without it.
+            unused = (
+                missing
+                and world.tick - clan.unused[tech_id] >= p.knowledge_unused_years * DAYS_PER_YEAR
+            )
             if not few and not unused:
                 continue
             factors = [("few_keepers", 1.0)] if few else []
             if unused:
                 factors.append(("out_of_use", 2.0 if few else 1.0))
+            if neighbours is None:
+                neighbours = [
+                    other
+                    for other in (self.clans[cid] for cid in sorted(self.clans))
+                    if other.id != clan.id
+                    and (
+                        other.culture == clan.culture or (clan.realm and other.realm == clan.realm)
+                    )
+                    and max(abs(other.y - clan.y), abs(other.x - clan.x)) <= p.contact_radius
+                ]
+            if any(tech_id in other.techs for other in neighbours):
+                factors.append(("reminded_by_neighbours", p.knowledge_reminded_factor))
             if not world.roll(
                 f"forget.{tech_id}", "group", clan.id, p.knowledge_loss_chance_per_year, factors
             ):
                 continue
             del clan.techs[tech_id]
+            clan.unused.pop(tech_id, None)
             self._effects.pop(clan.id, None)
             self.dirty_clans.add(clan.id)
             self.forgotten.append((clan.id, tech_id, world.tick))
@@ -1863,6 +1889,9 @@ class Society:
                 "knowledge_lost",
                 data={"tech": tech_id, "clan": clan.name, "clan_id": clan.id},
             )
+            if not any(tech_id in other.techs for other in self.clans.values()):
+                world.count("knowledge.vanished")
+                world.emit("knowledge_vanished", data={"tech": tech_id, "clan": clan.name})
 
     def year_of_goods(self, clan: Clan) -> None:
         """Close the year's books, use up what the crafts need, and pass goods between partners."""
@@ -2682,6 +2711,7 @@ class Society:
                     "leader": c.leader,
                     "realm": c.realm,
                     "partners": {str(k): c.partners[k] for k in sorted(c.partners)},
+                    "unused": {k: c.unused[k] for k in sorted(c.unused)},
                     "stores": dict(sorted(c.stores.items())),
                     "flows": dict(sorted(c.flows.items())),
                     "last_flows": dict(sorted(c.last_flows.items())),
@@ -2726,6 +2756,7 @@ class Society:
                 leader=raw.get("leader", 0),
                 realm=raw.get("realm", 0),
                 partners={int(k): v for k, v in raw.get("partners", {}).items()},
+                unused=dict(raw.get("unused", {})),
                 stores=dict(raw.get("stores", {})),
                 flows={k: list(v) for k, v in raw.get("flows", {}).items()},
                 last_flows={k: list(v) for k, v in raw.get("last_flows", {}).items()},
