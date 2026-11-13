@@ -7,7 +7,7 @@ fire:
   effects: {mortality_percent: 85, harvest_percent: {plants: 10, game: 10}}
 stone_tools:
   name: {de: Steinwerkzeuge, en: Stone tools}
-  needs_nearby: [flint]
+  # Known from the start: people have always worked stone, whatever stone was at hand.
   base_chance_per_year: 0.00012
   factors: {crafty: 1.8, curious: 1.3}
   effects: {harvest_percent: {plants: 15, game: 15}}
