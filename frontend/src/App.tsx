@@ -782,6 +782,7 @@ export function App() {
   const [land, setLand] = useState<Land>({ clans: [], peoples: [], realms: [] });
   const [realms, setRealms] = useState<Realm[]>([]);
   const [wars, setWars] = useState<War[]>([]);
+  const [stocks, setStocks] = useState<Record<string, number[]>>({});
   const [landBy, setLandBy] = useState<"peoples" | "realms" | "off">("peoples");
   const [links, setLinks] = useState<TradeLink[]>([]);
   const [worldStores, setWorldStores] = useState<{ id: string; name: string; amount: number }[]>([]);
@@ -930,6 +931,21 @@ export function App() {
     };
   }, [worldId, lang, minImportance]);
 
+  // What the woods and bushes hold, once a year.
+  const stockYear = stats?.year;
+  useEffect(() => {
+    if (worldId === null || stockYear === undefined) return;
+    let cancelled = false;
+    void Promise.all([api.layer(worldId, "wood"), api.layer(worldId, "plants")])
+      .then(([wood, plants]) => {
+        if (!cancelled) setStocks({ wood: wood.values, plants: plants.values });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [worldId, stockYear]);
+
   useEffect(() => {
     if (!banner) return;
     const timer = window.setTimeout(() => setBanner(null), 6000);
@@ -1071,7 +1087,7 @@ export function App() {
 
       <main>
         <div className="stage">
-          <MapView active map={map} steps={steps} groups={groups} places={places} people={people} land={landBy === "off" ? null : land} landBy={landBy === "realms" ? "realms" : "peoples"} realms={realms} wars={wars} year={stats?.year ?? 0} links={showTrade ? links : []} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
+          <MapView active map={map} steps={steps} groups={groups} places={places} people={people} land={landBy === "off" ? null : land} landBy={landBy === "realms" ? "realms" : "peoples"} realms={realms} wars={wars} year={stats?.year ?? 0} stocks={stocks} links={showTrade ? links : []} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
           {banner ? (
             <div key={banner.seq} className={`banner ${banner.kind}`} role="status" onClick={() => setBanner(null)}>
               <strong>{t(BANNER_TITLES[banner.kind])}</strong>

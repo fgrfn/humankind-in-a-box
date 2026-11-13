@@ -34,6 +34,7 @@ export interface WorldMap {
   width: number;
   height: number;
   biomes: string[];
+  capacity?: Record<string, Record<string, number>>;
   deposits: { id: string; de: string; en: string }[];
   biome: number[];
   elevation: number[];
@@ -330,6 +331,7 @@ export const api = {
   territory: (world: number) => get<Land>(`/worlds/${world}/territory`),
   realms: (world: number) => get<Realm[]>(`/worlds/${world}/realms`),
   wars: (world: number) => get<War[]>(`/worlds/${world}/wars`),
+  layer: (world: number, layer: string) => get<{ layer: string; values: number[] }>(`/worlds/${world}/layers/${layer}`),
   peoples: (world: number) => get<People[]>(`/worlds/${world}/peoples`),
   people: (world: number, lang: Lang) => get<Human[]>(`/worlds/${world}/people?lang=${lang}`),
   // Two generations each way: a pedigree doubles with every generation, and on a

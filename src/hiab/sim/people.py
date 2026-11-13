@@ -2271,6 +2271,7 @@ class Society:
         for clan_id in sorted(self.clans):
             people_of[clan_id] = self.clans[clan_id].culture
         land_people = people_of[owner]
+        self.close_enclaves(owner, land_people)
 
         # Land that passed from one people to another is news.
         before, after = self.land_people, land_people
@@ -2300,6 +2301,57 @@ class Society:
                 )
         self.territory = owner
         self.land_people = land_people
+
+    def close_enclaves(self, owner: np.ndarray, land_people: np.ndarray) -> None:
+        """A people's land hangs together: no island of it inside another's.
+
+        Land of a people that is cut off from every camp of that people goes to
+        the people around it, so what lies inside a border belongs to it. Plain
+        flood fill in a fixed order; no dice.
+        """
+        height, width = owner.shape
+        camps: set[tuple[int, int]] = {(c.y, c.x) for c in self.clans.values()}
+        seen = np.zeros(owner.shape, dtype=bool)
+        flat_people = land_people.ravel()
+        for start in np.flatnonzero(flat_people).tolist():
+            people = int(flat_people[start])
+            if seen.flat[start]:
+                continue
+            component: list[int] = []
+            stack = [start]
+            seen.flat[start] = True
+            has_camp = False
+            around: dict[int, int] = {}  # neighbouring people -> shared border
+            around_clan: dict[int, int] = {}
+            while stack:
+                index = stack.pop()
+                component.append(index)
+                y, x = divmod(index, width)
+                if (y, x) in camps and self.clans_at_people(y, x, people):
+                    has_camp = True
+                for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+                    if not (0 <= ny < height and 0 <= nx < width):
+                        continue
+                    neighbour = ny * width + nx
+                    other = int(flat_people[neighbour])
+                    if other == people:
+                        if not seen.flat[neighbour]:
+                            seen.flat[neighbour] = True
+                            stack.append(neighbour)
+                    elif other != 0:
+                        around[other] = around.get(other, 0) + 1
+                        around_clan.setdefault(other, int(owner.flat[neighbour]))
+            if has_camp or not around:
+                continue
+            # Surrounded: the people with the longest shared border takes it.
+            taker = min(around, key=lambda other: (-around[other], other))
+            for index in component:
+                owner.flat[index] = around_clan[taker]
+                land_people.flat[index] = taker
+            self.world.count("territory.enclaves_closed")
+
+    def clans_at_people(self, y: int, x: int, people: int) -> bool:
+        return any(c.y == y and c.x == x and c.culture == people for c in self.clans.values())
 
     def new_year(self) -> None:
         """Footsteps fade, and what stands in abandoned places slowly falls apart."""
