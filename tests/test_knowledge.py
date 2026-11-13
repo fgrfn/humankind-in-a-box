@@ -68,6 +68,17 @@ HERDERS = (
     "life.raid_chance_per_year: 0.4\n"
     "life.raid_reach: 40\n"
 )
+LANDLUBBERS = (
+    "technologies.boats.base_chance_per_year: 0\n"
+    "life.start_peoples: 3\n"
+    "life.start_families: 6\n"
+    "life.clan_split_adults: 16\n"
+    "life.clan_split_chance_per_year: 0.25\n"
+)
+SAILORS = LANDLUBBERS.replace("technologies.boats.base_chance_per_year: 0\n", "") + (
+    "life.start_technologies: [fire, stone_tools, fishing, boats, sailing]\n"
+    "life.wander_chance_per_month: 0.06\n"
+)
 WARRIORS = RULERS + "life.war_chance_per_year: 0.5\nlife.war_reach: 60\n"
 
 
@@ -182,7 +193,18 @@ def test_peoples_form_split_and_name_their_places(tmp_path: Path, settings: Sett
 
 @pytest.mark.parametrize(
     "overrides",
-    [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS, RULERS, WARRIORS, FEVERISH, DEVOUT, HERDERS],
+    [
+        EARLY_FARMERS,
+        FORGETFUL,
+        MANY_PEOPLES,
+        TRADERS,
+        RULERS,
+        WARRIORS,
+        FEVERISH,
+        DEVOUT,
+        HERDERS,
+        SAILORS,
+    ],
 )
 def test_such_worlds_resume_identically(tmp_path: Path, settings: Settings, overrides: str) -> None:
     prepared = world_with(settings, overrides)
@@ -456,3 +478,31 @@ def test_herders_keep_animals_and_raid(tmp_path: Path, settings: Settings) -> No
     # Herders graze: the pasture around them is not untouched.
     grass = world.stocks["pasture"]
     assert int(grass.min()) >= 0
+
+
+def test_without_boats_clans_keep_to_their_land(tmp_path: Path, settings: Settings) -> None:
+    world = simulate(tmp_path / "w.sqlite", world_with(settings, LANDLUBBERS), 150, 1)
+    society = world.society
+    assert society is not None
+    assert len(society.landmass_size) > 1, "the test needs a world with more than one land"
+    masses = {int(society.landmass[clan.y, clan.x]) for clan in society.clans.values()}
+    assert masses <= society.landed
+    assert world_metric(tmp_path / "w.sqlite", "seafaring.crossings") == 0
+
+
+def test_sailors_cross_the_sea(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, SAILORS), 150, 1)
+    society = world.society
+    assert society is not None
+    assert world_metric(path, "seafaring.crossings") > 0, "nobody crossed the water in boats"
+    masses = {int(society.landmass[clan.y, clan.x]) for clan in society.clans.values()}
+    assert masses <= society.landed
+
+
+def world_metric(path: Path, key: str) -> float:
+    conn = sqlite3.connect(path)
+    sql = "SELECT COALESCE(SUM(value), 0) FROM metrics WHERE key = ?"
+    value = conn.execute(sql, (key,)).fetchone()[0]
+    conn.close()
+    return float(value)

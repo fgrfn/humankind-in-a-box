@@ -71,3 +71,9 @@ The owner wants a life simulation: people who visibly do things. Decision: the m
 - What herds graze is named in the data pack (`herd_grazes`), so the core knows no concrete resource. Herding no longer adds to the soil harvest; the herd itself is the gain.
 - Herds start when the knowledge is learned (from the founding knowledge too) and never from nothing again, so a herd eaten or lost stays lost until it is raided or plundered back.
 - Raids are clan against clan and short, unlike wars between chiefdoms: one roll whether to ride out, one for the outcome, one dead on the losing side. Raid deaths have their own cause so war statistics stay exact.
+
+## 2026-11-13: boats and islands
+
+- Landmasses are computed from the map when a world is opened, never stored: the map is fixed, so the labels are too.
+- The sea is crossed by moving camp, not by a separate voyage system: the move and split rolls stay the same and boats only widen where a clan may go. A crossing needs a camp near water.
+- Contact, trade and learning still reach over water within their radius, as before. Coastal neighbours could always see each other's fires.
