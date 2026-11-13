@@ -346,7 +346,7 @@ async function get<T>(path: string): Promise<T> {
 export const api = {
   speed: () => get<Speed>("/control"),
   setSpeed: (wish: { paused?: boolean; speed?: number; for_years?: number }, token: string | null) => put<Speed>("/control", wish, token),
-  health: () => get<{ status: string; version: string; world: (Calendar & { id: number }) | null }>("/health"),
+  health: () => get<{ status: string; version: string; commit?: string; world: (Calendar & { id: number }) | null }>("/health"),
   stats: (world: number, lang: Lang) => get<Stats>(`/worlds/${world}/stats?lang=${lang}`),
   map: (world: number) => get<WorldMap>(`/worlds/${world}/map`),
   steps: (world: number) => get<{ values: number[] }>(`/worlds/${world}/layers/steps`),

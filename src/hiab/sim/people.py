@@ -15,12 +15,14 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from hiab.logging_setup import get_logger
 from hiab.packs import BIOMES, LifeParams
 
 if TYPE_CHECKING:
     from hiab.sim.engine import World
 
 DAYS_PER_MONTH = 30
+_watch_log = get_logger("sim.watch")
 DAYS_PER_YEAR = 360
 TRAITS = ("vigor", "curiosity", "sociability", "craft")
 CONSONANTS = "bdfghjklmnprstvz"
@@ -225,6 +227,7 @@ class Society:
         self.landed: set[int] = set()  # landmasses anyone has ever camped on
         # Answers that depend only on the fixed map, per camp tile.
         self._goods_at: dict[tuple[int, int], list[str]] = {}
+        self._fixed_points: dict[str, tuple[int, int]] = {}  # diagnostics, see watch_fixed_points
         self._grows_at: dict[tuple[str, int, int], bool] = {}
         self._effects: dict[int, tuple[dict[str, int], float, int, int]] = {}
         self._labour: dict[int, int] = {}
@@ -3118,8 +3121,38 @@ class Society:
     def clans_at_people(self, y: int, x: int, people: int) -> bool:
         return any(c.y == y and c.x == x and c.culture == people for c in self.clans.values())
 
+    def watch_fixed_points(self) -> None:
+        """Diagnostics only: built things must never move. Once a year compare
+        places, buildings and settled clans with the year before and write any
+        change of tile to the program log. Nothing here touches the world."""
+        now: dict[str, tuple[int, int]] = {}
+        for place_id, place in self.places.items():
+            now[f"place:{place_id}"] = (place["y"], place["x"])
+            for building in place["buildings"]:
+                now[f"building:{building['id']}:{building['type']}"] = (
+                    building["y"],
+                    building["x"],
+                )
+        for clan in self.clans.values():
+            if clan.settled:
+                now[f"settled_clan:{clan.id}:place:{clan.place}"] = (clan.y, clan.x)
+        before = self._fixed_points
+        for key in sorted(now):
+            if key in before and before[key] != now[key]:
+                _watch_log.warning(
+                    "fixed point moved",
+                    extra={
+                        "what": key,
+                        "from": list(before[key]),
+                        "to": list(now[key]),
+                        "tick": self.world.tick,
+                    },
+                )
+        self._fixed_points = now
+
     def new_year(self) -> None:
         """Footsteps fade, and what stands in abandoned places slowly falls apart."""
+        self.watch_fixed_points()
         p = self.p
         self.steps = (
             self.steps.astype(np.int64) * (100 - p.steps_decay_percent_per_year) // 100

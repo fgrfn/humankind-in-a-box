@@ -369,3 +369,6 @@ button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 .villages .clan-count { font-size: 16px; }
 .free-head { font: 600 15px/1.2 var(--ui); color: var(--muted); margin: 22px 0 6px; }
 .clans .land-head .chip { flex: none; }
+
+/* Which code runs: small and quiet beside the title. */
+.brand .build { font: 400 12px/1 var(--ui); color: var(--muted); margin-left: 8px; font-variant-numeric: tabular-nums; }

@@ -1,7 +1,11 @@
 # The web frontend is committed in built form (src/hiab/web), so no Node is needed here.
 FROM python:3.13-slim
 
-ENV PYTHONUNBUFFERED=1 \
+# Which commit this image is built from, shown in the interface:
+#   docker build --build-arg HIAB_COMMIT=$(git rev-parse --short HEAD) -t hiab .
+ARG HIAB_COMMIT=unknown
+ENV HIAB_COMMIT=$HIAB_COMMIT \
+    PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     HIAB_DATA=/data
 

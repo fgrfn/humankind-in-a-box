@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from hiab import __version__
+from hiab import __version__, build_commit
 from hiab.control import SPEEDS, Control, read_control, read_pace, write_control
 from hiab.packs import BIOMES, PackSet
 from hiab.render import calendar, meaning_text, render_event
@@ -124,12 +124,15 @@ def create_app(
             **calendar(row["tick"]),
         }
 
+    commit = build_commit()
+
     @api.get("/health")
     def health(conn: Db) -> dict[str, Any]:
         world = active_world(conn)
         return {
             "status": "ok",
             "version": __version__,
+            "commit": commit,
             "world": None if world is None else world_out(world),
         }
 

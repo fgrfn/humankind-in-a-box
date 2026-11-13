@@ -838,6 +838,7 @@ export function App() {
   const [peoples, setPeoples] = useState<People[]>([]);
   const [land, setLand] = useState<Land>({ clans: [], peoples: [], realms: [] });
   const [realms, setRealms] = useState<Realm[]>([]);
+  const [build, setBuild] = useState("");
   const [wars, setWars] = useState<War[]>([]);
   const [faiths, setFaiths] = useState<Faith[]>([]);
   const [stocks, setStocks] = useState<Record<string, number[]>>({});
@@ -870,6 +871,7 @@ export function App() {
     async () => {
       const health = await api.health();
       setWorldId(health.world?.id ?? null);
+      setBuild(`${health.version}${health.commit && health.commit !== "unknown" ? ` · ${health.commit}` : ""}`);
     },
     10,
     [],
@@ -1101,6 +1103,7 @@ export function App() {
         <div className="brand">
           <BoxGlyph />
           <span>{t("title")}</span>
+          {build ? <small className="build" title={t("buildLabel")}>{build}</small> : null}
         </div>
         <p className="now">
           {stats ? (
