@@ -79,8 +79,22 @@ function shade(colour: number, factor: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
+// The land stands in terraces, as in Letopis: every tile sits at one of a few
+// heights and shows its earth or rock wall where the land in front is lower.
+const STEP = 6; // screen pixels per terrace
+let terraces: Uint8Array | null = null;
+let terraceWidth = 0;
+
+function terrace(x: number, y: number): number {
+  if (!terraces) return 0;
+  const tx = Math.round(x);
+  const ty = Math.round(y);
+  if (tx < 0 || ty < 0 || tx >= terraceWidth || ty * terraceWidth + tx >= terraces.length) return 0;
+  return terraces[ty * terraceWidth + tx];
+}
+
 function project(x: number, y: number): [number, number] {
-  return [((x - y) * TILE_W) / 2, ((x + y) * TILE_H) / 2];
+  return [((x - y) * TILE_W) / 2, ((x + y) * TILE_H) / 2 - terrace(x, y) * STEP];
 }
 
 function diamond(g: Graphics, x: number, y: number, inset = 0): void {
@@ -172,6 +186,9 @@ class Crowd {
   }
 
   // Everywhere a clan can walk to from its camp without crossing open water.
+  // Tiles with a building or a tree on them; people idle elsewhere.
+  blocked = new Set<number>();
+
   private explore(band: Band): void {
     const map = this.map!;
     const start = band.y * map.width + band.x;
@@ -182,7 +199,8 @@ class Crowd {
     for (let head = 0; head < queue.length; head++) {
       const index = queue[head];
       const steps = distance.get(index)!;
-      if (steps === 1) band.near.push(index);
+      // Where people linger around the camp: open ground, not where a hut or tree stands.
+      if (steps === 1 && !this.blocked.has(index)) band.near.push(index);
       if (steps >= REACH) continue;
       const x = index % map.width;
       const y = (index - x) / map.width;
@@ -393,6 +411,7 @@ interface Scene {
   fields: Container;
   nature: Container;
   buildings: Container;
+  lodges: Container;
   people: Container;
   camps: Container;
   sheet: Spritesheet | null;
@@ -473,9 +492,12 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         const people = new Container();
         people.sortableChildren = true;
         const camps = new Container();
-        world.addChild(terrain, fields, paths, borders, routes, nature, buildings, people, names, camps);
+        // Camps' huts and tents stand with the buildings, below the people;
+        // big names and the small name plates are drawn over everything.
+        const lodges = new Container();
+        world.addChild(terrain, fields, paths, borders, routes, nature, buildings, lodges, people, names, camps);
         app.stage.addChild(world);
-        scene.current = { app, world, terrain, paths, borders, names, routes, fields, nature, buildings, people, camps, sheet, natureAt: new Map(), natureKind: new Map() };
+        scene.current = { app, world, terrain, paths, borders, names, routes, fields, nature, buildings, lodges, people, camps, sheet, natureAt: new Map(), natureKind: new Map() };
         app.ticker.add((ticker) => {
           people.visible = world.scale.x >= 0.9; // too small to read from far away
           if (!people.visible) return;
@@ -587,9 +609,21 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         .map((biome, index) => (["ocean", "coast", "mountain"].includes(map.biomes[biome]) ? -1 : map.elevation[index]))
         .filter((height) => height >= 0)
         .sort((a, b) => a - b);
-      const hillLine = lowland.length ? lowland[Math.floor(lowland.length * 0.88)] : Infinity;
+      // Terraces: land rises in steps of a sixth of its height range, water lies flat.
+      const highest = lowland.length ? Math.max(lowland[lowland.length - 1], peaks.length ? peaks[peaks.length - 1] : 0) : 1;
+      terraceWidth = map.width;
+      terraces = new Uint8Array(map.width * map.height);
+      for (let index = 0; index < terraces.length; index++) {
+        const name = map.biomes[map.biome[index]];
+        if (name === "ocean" || name === "coast") continue;
+        const level = Math.max(1, Math.min(7, 1 + Math.floor((map.elevation[index] * 7) / Math.max(1, highest))));
+        // A river runs a step below the land around it.
+        terraces[index] = map.river[index] ? Math.max(1, level - 1) : level;
+      }
       // Diagonal by diagonal, so things further south cover what is behind them.
+      const levels = terraces;
       for (let sum = 0; sum <= map.width + map.height - 2; sum++) {
+        const walls = new Graphics();
         for (let x = Math.max(0, sum - map.height + 1); x <= Math.min(sum, map.width - 1); x++) {
           const y = sum - x;
           const index = y * map.width + x;
@@ -614,22 +648,30 @@ export function MapView({ active, map, steps, groups, places, people, land, land
             diamond(fallback, x, y);
             fallback.fill(shade(FALLBACK_COLOURS[name] ?? 0x555555, light));
           }
+          // Walls on the two sides facing the viewer, down to the lower neighbour.
+          const level = levels[index];
+          if (level > 0) {
+            const rocky = biome === "mountain" || ground === "rock" || ground === "snow";
+            const left = rocky ? 0x6a6560 : 0x6f4d33;
+            const right = rocky ? 0x524e4a : 0x573b27;
+            const lx = cx - TILE_W / 2;
+            const midY = cy + TILE_H / 2;
+            const bottomY = cy + TILE_H;
+            const below = (nx: number, ny: number) => (nx < map.width && ny < map.height ? levels[ny * map.width + nx] : 0);
+            const dl = level - below(x, y + 1);
+            if (dl > 0) {
+              walls.poly([lx, midY, cx, bottomY, cx, bottomY + dl * STEP, lx, midY + dl * STEP]).fill(left);
+              walls.moveTo(lx, midY + dl * STEP).lineTo(cx, bottomY + dl * STEP).stroke({ color: 0x2b1d14, width: 0.5, alpha: 0.5 });
+            }
+            const dr = level - below(x + 1, y);
+            if (dr > 0) {
+              walls.poly([cx, bottomY, cx + TILE_W / 2, midY, cx + TILE_W / 2, midY + dr * STEP, cx, bottomY + dr * STEP]).fill(right);
+              walls.moveTo(cx, bottomY + dr * STEP).lineTo(cx + TILE_W / 2, midY + dr * STEP).stroke({ color: 0x2b1d14, width: 0.5, alpha: 0.5 });
+            }
+          }
           if (water) continue;
-          const hill = map.river[index]
-            ? null
-            : biome === "mountain"
-              ? map.elevation[index] >= snowLine || tileNoise(x, y, 11) < 30
-                ? "mountain"
-                : "rocky_hill"
-              : map.elevation[index] >= hillLine
-                ? biome === "forest" || biome === "taiga"
-                  ? "forested_hill"
-                  : biome === "steppe" || biome === "desert"
-                    ? "dry_hill"
-                    : biome === "tundra" || biome === "snow"
-                      ? "snowy_hill"
-                      : "grassy_hill"
-                : null;
+          // The terraces carry the height; mountains add rock and, highest up, peaks.
+          const hill = map.river[index] || biome !== "mountain" ? null : map.elevation[index] >= snowLine ? "mountain" : tileNoise(x, y, 11) < 45 ? "rocky_hill" : null;
           if (hill && textures[hill]) {
             const sprite = new Sprite(textures[hill]);
             sprite.anchor.set(0.5, 1);
@@ -665,6 +707,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
             if (deposit < 0) current.natureKind.set(index, object);
           }
         }
+        current.terrain.addChild(walls);
       }
       current.terrain.addChildAt(fallback, 0);
       current.terrain.addChild(marks);
@@ -957,6 +1000,19 @@ export function MapView({ active, map, steps, groups, places, people, land, land
     });
   }, [map, people]);
 
+  // Where huts and trees stand, so people idle beside them rather than in them.
+  useEffect(() => {
+    if (!map) return;
+    void ready.current?.then(() => {
+      const current = scene.current;
+      if (!current) return;
+      const blocked = new Set<number>();
+      for (const place of places) for (const building of place.buildings) blocked.add(building.y * map.width + building.x);
+      for (const [index, kind] of current.natureKind) if (kind !== "berry_bush" && kind !== "reeds") blocked.add(index);
+      crowd.current.blocked = blocked;
+    });
+  }, [map, places]);
+
   // What people have built, is building, or has fallen into ruin.
   useEffect(() => {
     void ready.current?.then(() => {
@@ -993,20 +1049,26 @@ export function MapView({ active, map, steps, groups, places, people, land, land
       if (!current) return;
       const layer = current.camps as Container & { wasDragged?: () => boolean };
       for (const child of layer.removeChildren()) child.destroy({ children: true });
+      for (const child of current.lodges.removeChildren()) child.destroy({ children: true });
       const before = campsAt.current;
       const now = new Map<number, [number, number]>();
       const gliding: [Container, number, number, number, number][] = [];
       for (const group of [...groups].sort((a, b) => a.y + a.x - (b.y + b.x))) {
         const [cx, cy] = project(group.x, group.y);
         const marker = new Container();
+        const lodge = new Container();
         marker.position.set(cx, cy + TILE_H / 2);
+        lodge.position.set(cx, cy + TILE_H / 2);
         now.set(group.id, [cx, cy + TILE_H / 2]);
         const was = before.get(group.id);
         if (was && (was[0] !== cx || was[1] !== cy + TILE_H / 2)) {
           // A camp that moved glides to its new place instead of jumping.
           gliding.push([marker, was[0], was[1], cx, cy + TILE_H / 2]);
+          gliding.push([lodge, was[0], was[1], cx, cy + TILE_H / 2]);
           marker.position.set(was[0], was[1]);
+          lodge.position.set(was[0], was[1]);
         }
+        current.lodges.addChild(lodge);
         const g = new Graphics();
         const chosen = group.id === selected;
         if (chosen) g.ellipse(0, 0, 13, 6.5).stroke({ color: 0xffffff, width: 1.5 });
@@ -1016,7 +1078,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           camp.anchor.set(0.5, 1);
           camp.position.set(0, TILE_H / 2);
           camp.scale.set(SPRITE_SCALE * 0.85);
-          marker.addChild(camp);
+          lodge.addChild(camp);
         } else if (group.settled) {
           g.rect(-5, -7, 10, 7).fill(0xc9895a);
           g.poly([-7, -7, 0, -13, 7, -7]).fill(0x8a4f38);
@@ -1034,7 +1096,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           sprite.anchor.set(0.5, 1);
           sprite.position.set(x, y);
           sprite.scale.set(flip ? -size : size, size);
-          marker.addChildAt(sprite, 0);
+          lodge.addChildAt(sprite, 0);
         };
         if (group.settled && group.technologies.some((tech) => tech.id === "copper_working")) {
           extra("smithy", -TILE_W * 0.55, TILE_H * 0.1, SPRITE_SCALE * 0.7);
