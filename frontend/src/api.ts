@@ -20,6 +20,7 @@ export interface Stats extends Calendar {
   trade_partnerships: number;
   realms?: number;
   wars_ongoing?: number;
+  faiths?: number;
   wars_total?: number;
   births_total: number;
   deaths_total: number;
@@ -93,6 +94,7 @@ export interface Group {
   partners: { id: number; name: string; since_year: number }[];
   leader?: { id: number; name: string } | null;
   sick?: boolean;
+  faith?: { id: number; name: string } | null;
   realm?: { id: number; name: string; seat: boolean } | null;
   stores: Store[];
   members?: { id: number; name: string; sex: "f" | "m"; age: number; children: number; activity: string; activity_text: string }[];
@@ -140,6 +142,21 @@ export interface Land {
   clans: number[];
   peoples: number[];
   realms: number[];
+  faiths?: number[];
+}
+
+export interface Faith {
+  id: number;
+  name: string;
+  aspect: string;
+  aspect_text: string | null;
+  founded_year: number;
+  ended_year: number | null;
+  origin_id: number;
+  origin: string | null;
+  people: string | null;
+  clans: number;
+  population: number;
 }
 
 export interface People {
@@ -334,6 +351,7 @@ export const api = {
   territory: (world: number) => get<Land>(`/worlds/${world}/territory`),
   realms: (world: number) => get<Realm[]>(`/worlds/${world}/realms`),
   wars: (world: number) => get<War[]>(`/worlds/${world}/wars`),
+  faiths: (world: number, lang: string) => get<Faith[]>(`/worlds/${world}/faiths?lang=${lang}`),
   layer: (world: number, layer: string) => get<{ layer: string; values: number[] }>(`/worlds/${world}/layers/${layer}`),
   peoples: (world: number) => get<People[]>(`/worlds/${world}/peoples`),
   people: (world: number, lang: Lang) => get<Human[]>(`/worlds/${world}/people?lang=${lang}`),

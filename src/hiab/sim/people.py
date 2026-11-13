@@ -86,6 +86,7 @@ class Clan:
     place: int = 0
     famine: bool = False
     dissolved: int | None = None
+    faith: int = 0  # what the clan worships, 0 for nothing yet
     sick_until: int = 0  # a fever goes round until this tick
     immune_until: int = 0  # who lived through one is spared until this tick
     sick_dead: int = 0  # who died of the current fever
@@ -121,6 +122,19 @@ class War:
     field_x: int = -1
     last_battle: int = 0  # tick
     last_fallen: int = 0
+
+
+@dataclass(slots=True)
+class Faith:
+    """What some clans worship: named in the tongue of the people it began in."""
+
+    id: int
+    name: str
+    aspect: str
+    founded: int
+    origin: int  # clan
+    people: int
+    ended: int | None = None
 
 
 @dataclass(slots=True)
@@ -188,6 +202,9 @@ class Society:
         self.cultures: dict[int, Culture] = {}
         self.realms: dict[int, Realm] = {}
         self.next_realm = 1
+        self.faiths: dict[int, Faith] = {}
+        self.next_faith = 1
+        self.dirty_faiths: set[int] = set()
         self.wars: dict[int, War] = {}
         self.next_war = 1
         self.dirty_wars: set[int] = set()
@@ -688,6 +705,7 @@ class Society:
             site = next((b for b in place["buildings"] if b["state"] == "site"), None)
         hungry = (clan.unmet[-1] if clan.unmet else 0) >= 20
         adults = self.nurse(clan, adults)
+        adults = self.rites(clan, adults)
         adults = self.muster(clan, adults)
         adults = self.fetch_goods(clan, adults)
         if site is None or hungry or len(adults) < 2:
@@ -857,16 +875,121 @@ class Society:
             self.set_work(crew, rid, y, x)
             self.walk(clan.y, clan.x, y, x, len(crew))
 
+    # ---- faith ------------------------------------------------------------
+
+    def same_faith(self, clan: Clan, other: Clan) -> bool:
+        return bool(clan.faith) and clan.faith == other.faith
+
+    def worship(self, clan: Clan) -> None:
+        """A faith is born in the clan, or comes to it from those around."""
+        world, p = self.world, self.p
+        devout = self.way(clan, "devout")
+        prophet = "prophet" in self.gifts.get(clan.id, ())
+        # Where faith can come from: the chiefdom's seat first, then partners and neighbours.
+        realm = self.realms.get(clan.realm)
+        seat = self.clans.get(realm.seat) if realm is not None and realm.ended is None else None
+        sources = []
+        if seat is not None and seat.id != clan.id and seat.faith and seat.faith != clan.faith:
+            sources.append((seat, 4.0))
+        for other in (self.clans[cid] for cid in sorted(self.clans)):
+            if other.id == clan.id or not other.faith or other.faith == clan.faith:
+                continue
+            if other.id in clan.partners or (
+                max(abs(other.y - clan.y), abs(other.x - clan.x)) <= p.contact_radius
+            ):
+                sources.append((other, 1.0))
+        if sources:
+            source, weight = sources[0]
+            preacher = "prophet" in self.gifts.get(source.id, ())
+            factors = [("from_the_ruler" if weight > 1 else "from_neighbours", weight)]
+            factors.append(("devout_people", devout))
+            if source.culture == clan.culture:
+                factors.append(("same_people", 2.0))
+            if preacher:
+                factors.append(("prophet_preaches", 3.0))
+            if clan.faith:
+                factors.append(("holds_its_own_faith", 0.3))
+            if world.roll("faith_spreads", "group", clan.id, p.faith_spread_chance, factors):
+                self.convert(clan, source.faith, source)
+                return
+        if clan.faith:
+            return
+        factors = [("devout_people", devout)]
+        if prophet:
+            factors.append(("prophet", 10.0))
+        if clan.settled:
+            factors.append(("settled", 1.5))
+        if not world.roll("faith_born", "group", clan.id, p.faith_chance_per_year, factors):
+            return
+        aspects = sorted(p.faith_aspects)
+        aspect = aspects[world.draw_int("faith_aspect", 0, len(aspects) - 1)]
+        culture = self.cultures[clan.culture]
+        faith = Faith(
+            id=self.next_faith,
+            name=self.word(culture, f"faith.{aspect}"),
+            aspect=aspect,
+            founded=world.tick,
+            origin=clan.id,
+            people=clan.culture,
+        )
+        self.next_faith += 1
+        self.faiths[faith.id] = faith
+        self.dirty_faiths.add(faith.id)
+        clan.faith = faith.id
+        self.dirty_clans.add(clan.id)
+        world.count("faiths.born")
+        world.emit(
+            "faith_born",
+            data={
+                "clan": clan.name,
+                "clan_id": clan.id,
+                "faith": faith.name,
+                "faith_id": faith.id,
+                "aspect": aspect,
+            },
+        )
+
+    def rites(self, clan: Clan, adults: list[Person]) -> list[Person]:
+        """A clan with a faith has someone who keeps its rites at the camp."""
+        if not clan.faith or len(adults) < 4:
+            return adults
+        keeper = max(adults, key=lambda a: (a.gift == "prophet", a.traits[2], -a.id))
+        self.set_work([keeper], "pray", clan.y, clan.x)
+        return [a for a in adults if a.id != keeper.id]
+
+    def convert(self, clan: Clan, faith_id: int, source: Clan) -> None:
+        before = self.faiths.get(clan.faith)
+        clan.faith = faith_id
+        self.dirty_clans.add(clan.id)
+        faith = self.faiths[faith_id]
+        self.world.count("faiths.converted")
+        self.world.emit(
+            "faith_spread",
+            data={
+                "clan": clan.name,
+                "clan_id": clan.id,
+                "faith": faith.name,
+                "faith_id": faith.id,
+                "from": source.name,
+                "from_id": source.id,
+            },
+        )
+        if before is not None and not any(c.faith == before.id for c in self.clans.values()):
+            before.ended = self.world.tick
+            self.dirty_faiths.add(before.id)
+            self.world.emit("faith_forgotten", data={"faith": before.name, "faith_id": before.id})
+
     # ---- sickness -----------------------------------------------------------
 
     def fever(self, clan: Clan) -> None:
         """A fever ends, breaks out, or comes over from a neighbour."""
         world, p = self.world, self.p
         if clan.sick_until and clan.sick_until <= world.tick:
-            world.emit(
-                "epidemic_ended",
-                data={"clan": clan.name, "clan_id": clan.id, "dead": clan.sick_dead},
-            )
+            if clan.sick_dead:  # a fever nobody died of is not worth telling
+                world.emit(
+                    "epidemic_ended",
+                    data={"clan": clan.name, "clan_id": clan.id, "dead": clan.sick_dead},
+                )
             clan.sick_until, clan.sick_dead = 0, 0
             clan.immune_until = world.tick + p.disease_immunity_years * DAYS_PER_YEAR
             self.dirty_clans.add(clan.id)
@@ -944,7 +1067,7 @@ class Society:
 
     # ---- the gifted -------------------------------------------------------
 
-    GIFTS = ("leader", "inventor", "warrior", "healer")
+    GIFTS = ("leader", "inventor", "warrior", "healer", "prophet")
 
     def maybe_gifted(self, person: Person, clan: Clan) -> None:
         """Seldom someone comes of age who will change things for the clan."""
@@ -955,7 +1078,7 @@ class Society:
         person.gift = gift
         # The gift shows in what the person is: the leader wins people over, the
         # warrior is strong, the inventor and the healer have skilled hands.
-        index = {"leader": 2, "warrior": 0, "inventor": 1, "healer": 3}[gift]
+        index = {"leader": 2, "warrior": 0, "inventor": 1, "healer": 3, "prophet": 2}[gift]
         person.traits[index] = max(person.traits[index], 95)
         self.dirty_persons.add(person.id)
         world.count(f"gifted.{gift}")
@@ -1150,6 +1273,15 @@ class Society:
         realm = self.realms.get(clan.realm)
         if realm is not None and realm.ended is None and realm.seat == clan.id:
             self.move_seat(realm)
+        faith = self.faiths.get(clan.faith)
+        if (
+            faith is not None
+            and faith.ended is None
+            and not any(other.faith == faith.id for other in self.clans.values())
+        ):
+            faith.ended = self.world.tick
+            self.dirty_faiths.add(faith.id)
+            self.world.emit("faith_forgotten", data={"faith": faith.name, "faith_id": faith.id})
         self._effects.pop(clan.id, None)
         if clan.culture in self.cultures:
             self.fade(self.cultures[clan.culture])
@@ -1261,7 +1393,11 @@ class Society:
                     "group",
                     clan.id,
                     p.trade_chance_per_year,
-                    [*factors, ("trading_people", self.way(clan, "trading"))],
+                    [
+                        *factors,
+                        ("trading_people", self.way(clan, "trading")),
+                        *([("same_faith", 1.5)] if self.same_faith(clan, other) else []),
+                    ],
                 ):
                     continue
                 clan.partners[other.id] = world.tick
@@ -1499,6 +1635,8 @@ class Society:
             if not other.settled:
                 # Wanderers seldom bind themselves: they would soon be gone again.
                 factors.append(("wandering", 0.4))
+            if self.same_faith(seat, other):
+                factors.append(("same_faith", 1.5))
             if not world.roll(
                 "realm_joined", "group", other.id, p.realm_join_chance_per_year, factors
             ):
@@ -1679,6 +1817,11 @@ class Society:
         if ruler is not None and ruler.traits[0] >= 60:
             factors.append(("warlike_ruler", 1.5))
         factors.append(("warlike_people", self.way(seat, "warlike")))
+        target_seat = self.clans.get(target.seat)
+        if target_seat is not None and seat.faith and target_seat.faith:
+            factors.append(
+                ("same_faith", 0.5) if seat.faith == target_seat.faith else ("other_faith", 1.4)
+            )
         if any(set(clan.partners) & theirs_clans for clan in mine):
             factors.append(("trade_partners", 0.3))
         if not world.roll("war_declared", "realm", realm.id, p.war_chance_per_year, factors):
@@ -2135,6 +2278,7 @@ class Society:
         self.year_of_goods(clan)
         self.note_gifts(clan)
         self.fever(clan)
+        self.worship(clan)
         self.follow(clan, adults)
         self.rule(clan, adults)
 
@@ -2886,6 +3030,7 @@ class Society:
         self.dirty_cultures.clear()
         self.dirty_realms.clear()
         self.dirty_wars.clear()
+        self.dirty_faiths.clear()
         self.new_discoveries.clear()
         self.forgotten.clear()
         self.new_links.clear()
@@ -2904,6 +3049,19 @@ class Society:
             "next_culture": self.next_culture,
             "next_realm": self.next_realm,
             "next_war": self.next_war,
+            "next_faith": self.next_faith,
+            "faiths": [
+                {
+                    "id": f.id,
+                    "name": f.name,
+                    "aspect": f.aspect,
+                    "founded": f.founded,
+                    "origin": f.origin,
+                    "people": f.people,
+                    "ended": f.ended,
+                }
+                for f in (self.faiths[fid] for fid in sorted(self.faiths))
+            ],
             "gifts": {str(k): sorted(self.gifts[k]) for k in sorted(self.gifts)},
             "wars": [
                 {
@@ -2964,6 +3122,7 @@ class Society:
                     "leader": c.leader,
                     "realm": c.realm,
                     "sick_until": c.sick_until,
+                    "faith": c.faith,
                     "immune_until": c.immune_until,
                     "sick_dead": c.sick_dead,
                     "partners": {str(k): c.partners[k] for k in sorted(c.partners)},
@@ -3012,6 +3171,7 @@ class Society:
                 leader=raw.get("leader", 0),
                 realm=raw.get("realm", 0),
                 sick_until=raw.get("sick_until", 0),
+                faith=raw.get("faith", 0),
                 immune_until=raw.get("immune_until", 0),
                 sick_dead=raw.get("sick_dead", 0),
                 partners={int(k): v for k, v in raw.get("partners", {}).items()},
@@ -3029,6 +3189,8 @@ class Society:
             )
         self.next_realm = state.get("next_realm", 1)
         self.next_war = state.get("next_war", 1)
+        self.next_faith = state.get("next_faith", 1)
+        self.faiths = {raw["id"]: Faith(**raw) for raw in state.get("faiths", [])}
         self.wars = {raw["id"]: War(**raw) for raw in state.get("wars", [])}
         self.realms = {raw["id"]: Realm(**raw) for raw in state.get("realms", [])}
         self.next_culture = state.get("next_culture", 1)

@@ -283,3 +283,23 @@ epidemic_ended:
   text:
     de: "Das Fieber bei den {clan} ist vorüber. {dead} sind ihm erlegen."
     en: "The fever among the {clan} has passed. {dead} died of it."
+gifted_prophet:
+  importance: 4
+  text:
+    de: "{name} von den {clan} spricht von Dingen jenseits dieser Welt, und die Menschen hören zu."
+    en: "{name} of the {clan} speaks of things beyond this world, and people listen."
+faith_born:
+  importance: 4
+  text:
+    de: "Die {clan} beginnen {aspect} zu verehren. Sie nennen ihren Glauben {faith}."
+    en: "The {clan} begin to worship {aspect}. They call their faith {faith}."
+faith_spread:
+  importance: 2
+  text:
+    de: "Die {clan} nehmen von den {from} den Glauben {faith} an."
+    en: "The {clan} take up the faith {faith} from the {from}."
+faith_forgotten:
+  importance: 3
+  text:
+    de: "Niemand glaubt mehr an {faith}."
+    en: "Nobody keeps the faith {faith} any more."

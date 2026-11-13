@@ -1,7 +1,7 @@
 import { Application, Assets, Container, Graphics, Sprite, type Spritesheet, Text } from "pixi.js";
 import { useEffect, useRef } from "react";
-import { peopleColour, realmColour } from "./colours";
-import type { Building, Group, Human, Land, Place, Realm, TradeLink, War, WorldMap } from "./api";
+import { faithColour, peopleColour, realmColour } from "./colours";
+import type { Building, Faith, Group, Human, Land, Place, Realm, TradeLink, War, WorldMap } from "./api";
 
 // One tile is 32 x 16 map units. The sprites are drawn at twice that size, so
 // the map is pixel-exact at zoom 2 and stays sharp when zoomed further in.
@@ -165,6 +165,7 @@ function figureFor(person: Human, band: Band): string {
     if (band.techs.has("bow") && person.id % 3 === 0) return "archer";
     return person.id % 2 === 0 ? "shield_warrior" : "warrior";
   }
+  if (kind === "pray") return person.sex === "f" ? "priestess" : "shaman";
   if (kind === "sick") return "sick";
   if (kind === "heal") return "healer";
   if (person.id === band.leader) return "chieftain";
@@ -441,9 +442,10 @@ interface Props {
   places: Place[];
   people: Human[];
   land: Land | null;
-  landBy: "peoples" | "realms";
+  landBy: "peoples" | "realms" | "faiths";
   realms: Realm[];
   wars: War[];
+  faiths: Faith[];
   year: number;
   stocks: Record<string, number[]>;
   links: TradeLink[];
@@ -454,7 +456,7 @@ interface Props {
   onPerson: (id: number) => void;
 }
 
-export function MapView({ active, map, steps, groups, places, people, land, landBy, realms, wars, year, stocks, links, selected, focus, onSelect, onPerson }: Props) {
+export function MapView({ active, map, steps, groups, places, people, land, landBy, realms, wars, faiths, year, stocks, links, selected, focus, onSelect, onPerson }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<Scene | null>(null);
   const ready = useRef<Promise<void> | null>(null);
@@ -774,13 +776,15 @@ export function MapView({ active, map, steps, groups, places, people, land, land
       for (const child of current.borders.removeChildren()) child.destroy();
       for (const child of current.names.removeChildren()) child.destroy();
       if (!land || land.peoples.length !== map.width * map.height) return;
-      const owners = landBy === "realms" ? land.realms ?? [] : land.peoples;
+      const owners = landBy === "realms" ? land.realms ?? [] : landBy === "faiths" ? land.faiths ?? [] : land.peoples;
       if (owners.length !== map.width * map.height) return;
       const ownerNames =
         landBy === "realms"
           ? new Map(realms.filter((realm) => realm.ended_year === null).map((realm) => [realm.id, realm.name]))
-          : new Map(groups.filter((group) => group.people).map((group) => [group.people_id, group.people as string]));
-      const colourOf = landBy === "realms" ? realmColour : peopleColour;
+          : landBy === "faiths"
+            ? new Map(groups.filter((group) => group.faith).map((group) => [group.faith!.id, group.faith!.name]))
+            : new Map(groups.filter((group) => group.people).map((group) => [group.people_id, group.people as string]));
+      const colourOf = landBy === "realms" ? realmColour : landBy === "faiths" ? faithColour : peopleColour;
       const wash = new Graphics();
       const inner = new Graphics();
       const casing = new Graphics();
@@ -1105,6 +1109,14 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           sprite.scale.set(flip ? -size : size, size);
           lodge.addChildAt(sprite, 0);
         };
+        if (group.faith) {
+          // Where a faith began stands a stone circle; settled believers keep a
+          // shrine, wanderers a sacred fire.
+          const origin = faiths.find((faith) => faith.id === group.faith!.id)?.origin_id === group.id;
+          if (origin) extra("stone_circle", -TILE_W * 0.7, -TILE_H * 0.3, SPRITE_SCALE * 0.7);
+          else if (group.settled) extra("shrine", -TILE_W * 0.6, -TILE_H * 0.35, SPRITE_SCALE * 0.6);
+          else extra("sacred_fire", -TILE_W * 0.45, TILE_H * 0.2, SPRITE_SCALE * 0.5);
+        }
         if (group.sick) {
           // While a fever goes round, the sick lie by a healer's hut.
           extra("healer_hut", TILE_W * 0.1, -TILE_H * 0.35, SPRITE_SCALE * 0.6);
@@ -1172,7 +1184,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         requestAnimationFrame(frame);
       }
     });
-  }, [groups, selected, wars]);
+  }, [groups, selected, wars, faiths]);
 
   // The people themselves: figures that walk out from the camp, work and come back.
   useEffect(() => {

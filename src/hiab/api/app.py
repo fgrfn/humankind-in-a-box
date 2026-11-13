@@ -193,6 +193,7 @@ def create_app(
             ),
             "realms": one("SELECT COUNT(*) FROM realms WHERE world_id = ? AND ended IS NULL"),
             "wars_ongoing": one("SELECT COUNT(*) FROM wars WHERE world_id = ? AND ended IS NULL"),
+            "faiths": one("SELECT COUNT(*) FROM faiths WHERE world_id = ? AND ended IS NULL"),
             "wars_total": one("SELECT COUNT(*) FROM wars WHERE world_id = ?"),
             "births_total": total("people.births"),
             "deaths_total": total("people.deaths"),
@@ -565,7 +566,22 @@ def create_app(
             )
         }
         realms_held = [of_realm.get(clan, 0) for clan in clans]
-        return {"clans": clans, "peoples": peoples_held, "realms": realms_held}
+        of_faith = {
+            row["id"]: row["faith"]
+            for row in _rows(
+                conn,
+                "SELECT id, faith FROM groups "
+                "WHERE world_id = ? AND dissolved IS NULL AND faith > 0",
+                (world_id,),
+            )
+        }
+        faiths_held = [of_faith.get(clan, 0) for clan in clans]
+        return {
+            "clans": clans,
+            "peoples": peoples_held,
+            "realms": realms_held,
+            "faiths": faiths_held,
+        }
 
     @api.get("/worlds/{world_id}/wars")
     def wars(world_id: int, conn: Db) -> list[dict[str, Any]]:
@@ -609,6 +625,52 @@ def create_app(
         ]
         out.sort(key=lambda w: (w["ended_year"] is not None, -w["started_year"], -w["id"]))
         return out[:100]
+
+    @api.get("/worlds/{world_id}/faiths")
+    def faiths(world_id: int, conn: Db, lang: Lang = default_language) -> list[dict[str, Any]]:
+        """Faiths, kept ones first: what they worship, where they began, how many keep them."""
+        world_row(conn, world_id)
+        language = lang
+        aspects = packs.life.faith_aspects if packs.life is not None else {}
+        keepers = {
+            row["faith"]: (row["clans"], row["n"])
+            for row in _rows(
+                conn,
+                "SELECT g.faith, COUNT(DISTINCT g.id) AS clans, COUNT(p.id) AS n FROM groups g "
+                "LEFT JOIN persons p ON p.world_id = g.world_id AND p.clan = g.id "
+                "AND p.died IS NULL "
+                "WHERE g.world_id = ? AND g.dissolved IS NULL AND g.faith > 0 GROUP BY g.faith",
+                (world_id,),
+            )
+        }
+        out = []
+        for row in _rows(
+            conn,
+            "SELECT f.*, c.name AS people_name, g.name AS origin_name FROM faiths f "
+            "LEFT JOIN cultures c ON c.world_id = f.world_id AND c.id = f.people "
+            "LEFT JOIN groups g ON g.world_id = f.world_id AND g.id = f.origin_group "
+            "WHERE f.world_id = ? ORDER BY f.id",
+            (world_id,),
+        ):
+            clans, heads = keepers.get(row["id"], (0, 0))
+            aspect = aspects.get(row["aspect"])
+            out.append(
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "aspect": row["aspect"],
+                    "aspect_text": None if aspect is None else getattr(aspect, language),
+                    "founded_year": row["founded"] // 360,
+                    "ended_year": None if row["ended"] is None else row["ended"] // 360,
+                    "origin_id": row["origin_group"],
+                    "origin": row["origin_name"],
+                    "people": row["people_name"],
+                    "clans": clans,
+                    "population": heads,
+                }
+            )
+        out.sort(key=lambda f: (f["ended_year"] is not None, -f["population"], f["id"]))
+        return out
 
     @api.get("/worlds/{world_id}/realms")
     def realms(world_id: int, conn: Db) -> list[dict[str, Any]]:
@@ -756,11 +818,16 @@ def create_app(
         ).fetchone()
         # A fever goes round until its tick; the world's clock is its newest tick.
         now = conn.execute("SELECT tick FROM worlds WHERE id = ?", (row["world_id"],)).fetchone()[0]
+        faith = conn.execute(
+            "SELECT id, name FROM faiths WHERE world_id = ? AND id = ?",
+            (row["world_id"], row["faith"]),
+        ).fetchone()
         return {
             "id": row["id"],
             "name": row["name"],
             "people_id": row["culture"],
             "sick": row["sick_until"] > now,
+            "faith": None if faith is None else {"id": faith["id"], "name": faith["name"]},
             "people": None if people is None else people["name"],
             "leader": None if leader is None else {"id": leader["id"], "name": leader["name"]},
             "realm": None
@@ -872,6 +939,8 @@ def create_app(
             return f"baut: {name}" if language == "de" else f"building: {name}"
         if kind == "search":
             return "sucht Nahrung" if language == "de" else "searching for food"
+        if kind == "pray":
+            return "hält die Riten" if language == "de" else "keeps the rites"
         if kind == "sick":
             return "liegt krank" if language == "de" else "lies sick"
         if kind == "heal":

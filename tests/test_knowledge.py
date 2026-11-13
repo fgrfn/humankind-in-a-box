@@ -53,6 +53,12 @@ FEVERISH = (
     "life.start_peoples: 3\n"
     "life.start_families: 6\n"
 )
+DEVOUT = (
+    "life.faith_chance_per_year: 0.2\n"
+    "life.faith_spread_chance: 0.5\n"
+    "life.start_peoples: 3\n"
+    "life.start_families: 6\n"
+)
 WARRIORS = RULERS + "life.war_chance_per_year: 0.5\nlife.war_reach: 60\n"
 
 
@@ -166,7 +172,8 @@ def test_peoples_form_split_and_name_their_places(tmp_path: Path, settings: Sett
 
 
 @pytest.mark.parametrize(
-    "overrides", [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS, RULERS, WARRIORS, FEVERISH]
+    "overrides",
+    [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS, RULERS, WARRIORS, FEVERISH, DEVOUT],
 )
 def test_such_worlds_resume_identically(tmp_path: Path, settings: Settings, overrides: str) -> None:
     prepared = world_with(settings, overrides)
@@ -379,3 +386,23 @@ def test_fevers_break_out_spread_and_pass(tmp_path: Path, settings: Settings) ->
         assert not (clan.sick_until > world.tick and clan.immune_until > world.tick)
         if clan.sick_until <= world.tick:
             assert not any(society.persons[pid].activity == "sick" for pid in clan.members)
+
+
+def test_faiths_are_born_and_spread(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, DEVOUT), 60, 4)
+    society = world.society
+    assert society is not None
+    kept = {f.id for f in society.faiths.values() if f.ended is None}
+    assert kept, "no faith in a world built for faith"
+    for clan in society.clans.values():
+        assert clan.faith == 0 or clan.faith in kept, "a clan keeps a faith that has ended"
+    conn = sqlite3.connect(path)
+    kinds = {row[0] for row in conn.execute("SELECT DISTINCT type FROM events")}
+    assert "faith_born" in kinds
+    assert conn.execute("SELECT COUNT(*) FROM faiths").fetchone()[0] == len(society.faiths)
+    held = {
+        row[0]: row[1]
+        for row in conn.execute("SELECT id, faith FROM groups WHERE dissolved IS NULL")
+    }
+    assert held == {clan.id: clan.faith for clan in society.clans.values()}

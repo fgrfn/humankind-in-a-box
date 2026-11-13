@@ -161,6 +161,25 @@ class LifeParams(_Model):
     disease_spread_chance: float = Field(0.25, ge=0.0, le=1.0)
     disease_immunity_years: int = Field(25, ge=0, le=1000)
     disease_sick_percent: int = Field(25, ge=0, le=100)
+    # Faith. Now and then a clan comes to worship something: the sky, the earth,
+    # its ancestors. Devout peoples and prophets make that likelier. A faith
+    # spreads to neighbours, partners and the clans of a chiefdom, the ruler's
+    # faith most of all. Clans of one faith trade and ally more readily and
+    # fight each other less; between faiths war comes easier.
+    faith_chance_per_year: float = Field(0.0015, ge=0.0, le=1.0)
+    faith_spread_chance: float = Field(0.04, ge=0.0, le=1.0)
+    faith_aspects: dict[str, Text] = Field(
+        default_factory=lambda: {
+            "sky": Text(de="den Himmel", en="the sky"),
+            "earth": Text(de="die Erde", en="the earth"),
+            "ancestors": Text(de="die Ahnen", en="the ancestors"),
+            "fire": Text(de="das Feuer", en="fire"),
+            "water": Text(de="das Wasser", en="water"),
+            "sun": Text(de="die Sonne", en="the sun"),
+            "moon": Text(de="den Mond", en="the moon"),
+            "animals": Text(de="die Tiere", en="the animals"),
+        }
+    )
     adult_age: int = Field(ge=10, le=30)
     elder_age: int = Field(ge=30, le=90)
     max_fertile_age: int = Field(ge=20, le=60)
