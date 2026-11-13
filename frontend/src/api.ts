@@ -19,6 +19,8 @@ export interface Stats extends Calendar {
   peoples: number;
   trade_partnerships: number;
   realms?: number;
+  wars_ongoing?: number;
+  wars_total?: number;
   births_total: number;
   deaths_total: number;
   migrations_total: number;
@@ -108,6 +110,28 @@ export interface Realm {
   clans: number[];
   population: number;
   tiles: number;
+}
+
+export interface WarSide {
+  id: number;
+  name: string | null;
+  y: number | null;
+  x: number | null;
+}
+
+export interface War {
+  id: number;
+  attacker: WarSide;
+  defender: WarSide;
+  started_year: number;
+  ended_year: number | null;
+  outcome: "" | "peace" | "conquest" | "faded";
+  winner_id: number | null;
+  field: { y: number; x: number } | null;
+  last_battle_year: number | null;
+  last_fallen: number;
+  battles: number;
+  fallen: number;
 }
 
 export interface Land {
@@ -305,6 +329,7 @@ export const api = {
   since: (world: number, year: number, lang: Lang) => get<Since>(`/worlds/${world}/since?year=${year}&lang=${lang}`),
   territory: (world: number) => get<Land>(`/worlds/${world}/territory`),
   realms: (world: number) => get<Realm[]>(`/worlds/${world}/realms`),
+  wars: (world: number) => get<War[]>(`/worlds/${world}/wars`),
   peoples: (world: number) => get<People[]>(`/worlds/${world}/peoples`),
   people: (world: number, lang: Lang) => get<Human[]>(`/worlds/${world}/people?lang=${lang}`),
   // Two generations each way: a pedigree doubles with every generation, and on a

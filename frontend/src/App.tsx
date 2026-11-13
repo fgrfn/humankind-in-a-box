@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, NeedsToken, type Speed, type FamilyTree, type TreePerson, type Discovery, type Group, type Human, type Lang, type Land, type People, type Realm, type Since, type TradeLink, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
+import { api, NeedsToken, type Speed, type FamilyTree, type TreePerson, type Discovery, type Group, type Human, type Lang, type Land, type People, type Realm, type War, type Since, type TradeLink, type PersonDetail, type Place, type Series, type Stats, type Why, type WorldEvent, type WorldMap } from "./api";
 import { Chart, SERIES_COLOURS, type Point } from "./Chart";
 import { HistoryBand, type Mark } from "./HistoryBand";
 import { formatNumber, translator, type TextKey } from "./i18n";
@@ -58,6 +58,14 @@ function BoxGlyph() {
   );
 }
 
+const BANNER_EVENTS = ["war_begun", "realm_conquered", "peace_made", "realm_founded"];
+const BANNER_TITLES: Record<string, TextKey> = {
+  war_begun: "bannerWar",
+  realm_conquered: "bannerConquest",
+  peace_made: "bannerPeace",
+  realm_founded: "bannerRealm",
+};
+
 function Chronicle({ events, t, minImportance, setMinImportance, explain, extinct }: {
   events: WorldEvent[];
   t: Translate;
@@ -101,7 +109,7 @@ function Chronicle({ events, t, minImportance, setMinImportance, explain, extinc
   );
 }
 
-function Numbers({ stats, series, discoveries, peoples, realms, worldStores, lang, t }: { stats: Stats; series: Series; discoveries: Discovery[]; peoples: People[]; realms: Realm[]; worldStores: { id: string; name: string; amount: number }[]; lang: Lang; t: Translate }) {
+function Numbers({ stats, series, discoveries, peoples, realms, wars, worldStores, lang, t }: { stats: Stats; series: Series; discoveries: Discovery[]; peoples: People[]; realms: Realm[]; wars: War[]; worldStores: { id: string; name: string; amount: number }[]; lang: Lang; t: Translate }) {
   const points = (key: string): Point[] => series[key] ?? [];
   const fed = useMemo(() => {
     const needed = new Map((series["food.needed"] ?? []).map((point) => [point.year, point.value]));
@@ -126,6 +134,7 @@ function Numbers({ stats, series, discoveries, peoples, realms, worldStores, lan
     [t("everLived"), formatNumber(stats.ever_lived, lang)],
     [t("peoples"), formatNumber(stats.peoples, lang)],
     [t("realms"), formatNumber(stats.realms ?? 0, lang)],
+    [t("warsNow"), formatNumber(stats.wars_ongoing ?? 0, lang)],
     [t("partnerships"), formatNumber(stats.trade_partnerships, lang)],
     [t("clans"), formatNumber(stats.clans, lang)],
     [t("settlements"), formatNumber(stats.settlements, lang)],
@@ -246,6 +255,35 @@ function Numbers({ stats, series, discoveries, peoples, realms, worldStores, lan
                 {standing
                   ? `, ${item.clans.length} ${item.clans.length === 1 ? t("clansOne") : t("clans")}${item.ruler ? `, ${t("ruler")} ${item.ruler}` : ""}${item.seat ? `, ${t("seat")} ${item.seat}` : ""}${item.people ? `, ${t("ofThePeople")} ${item.people}` : ""}${item.tiles ? `, ${formatNumber(item.tiles, lang)} ${t("tilesOfLand")}` : ""}`
                   : ` – ${item.ended_year}`}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <h2>{t("wars")}</h2>
+      {wars.length === 0 ? <p className="note">{t("noWars")}</p> : null}
+      <ul className="wars">
+        {wars.slice(0, 30).map((war) => {
+          const winner = war.winner_id === war.attacker.id ? war.attacker.name : war.winner_id === war.defender.id ? war.defender.name : null;
+          const outcome =
+            war.ended_year === null
+              ? t("warOngoing")
+              : war.outcome === "conquest"
+                ? `${t("conqueredBy")} ${winner ?? ""}`
+                : war.outcome === "peace"
+                  ? t("peace")
+                  : t("warFaded");
+          return (
+            <li key={war.id} className={war.ended_year === null ? "ongoing" : ""}>
+              <span className="name">
+                <i className="chip" style={{ background: realmCss(war.attacker.id) }} aria-hidden="true" />
+                {war.attacker.name} {t("against")} <i className="chip" style={{ background: realmCss(war.defender.id) }} aria-hidden="true" />
+                {war.defender.name}
+              </span>
+              <span className="state">
+                {t("year")} {war.started_year}
+                {war.ended_year === null ? "" : `–${war.ended_year}`}, {outcome}, {war.battles} {war.battles === 1 ? t("battleOne") : t("battles")}, {formatNumber(war.fallen, lang)} {t("fallen")}
               </span>
             </li>
           );
@@ -539,7 +577,7 @@ function PersonCard({ person, t, onPerson, onTree }: { person: PersonDetail; t: 
       <h2>{person.name}</h2>
       <p className="lede">
         {person.clan_name ? `${person.clan_name}, ` : ""}
-        {person.died_year === null ? `${t("age")} ${person.age}` : `${t("died")} ${t("year")} ${person.died_year}, ${t("age")} ${person.age}`}
+        {person.died_year === null ? `${t("age")} ${person.age}` : `${t("died")} ${t("year")} ${person.died_year}, ${t("age")} ${person.age}${person.cause === "war" ? `, ${t("fellInWar")}` : person.cause === "hunger" ? `, ${t("diedOfHunger")}` : ""}`}
       </p>
       <dl>
         {person.died_year === null ? (
@@ -716,11 +754,14 @@ export function App() {
   const [people, setPeople] = useState<Human[]>([]);
   const [person, setPerson] = useState<PersonDetail | null>(null);
   const [events, setEvents] = useState<WorldEvent[]>([]);
+  // Great moments are announced over the map for a few seconds.
+  const [banner, setBanner] = useState<{ kind: string; text: string; seq: number } | null>(null);
   const [series, setSeries] = useState<Series>({});
   const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
   const [peoples, setPeoples] = useState<People[]>([]);
   const [land, setLand] = useState<Land>({ clans: [], peoples: [], realms: [] });
   const [realms, setRealms] = useState<Realm[]>([]);
+  const [wars, setWars] = useState<War[]>([]);
   const [landBy, setLandBy] = useState<"peoples" | "realms" | "off">("peoples");
   const [links, setLinks] = useState<TradeLink[]>([]);
   const [worldStores, setWorldStores] = useState<{ id: string; name: string; amount: number }[]>([]);
@@ -807,6 +848,7 @@ export function App() {
       setPeoples(nextPeoples);
       setLand(await api.territory(worldId));
       setRealms(await api.realms(worldId));
+      setWars(await api.wars(worldId));
       setLinks(await api.trade(worldId));
       setWorldStores(await api.stores(worldId, lang));
       setSteps(nextSteps.values);
@@ -860,12 +902,19 @@ export function App() {
       if (event.seq <= newestSeq.current) return;
       newestSeq.current = event.seq;
       setEvents((current) => [event, ...current].slice(0, 300));
+      if (BANNER_EVENTS.includes(event.type)) setBanner({ kind: event.type, text: event.text, seq: event.seq });
     });
     return () => {
       alive = false;
       source.close();
     };
   }, [worldId, lang, minImportance]);
+
+  useEffect(() => {
+    if (!banner) return;
+    const timer = window.setTimeout(() => setBanner(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [banner]);
 
   useEffect(() => {
     if (worldId === null || selected === null) {
@@ -954,7 +1003,13 @@ export function App() {
 
       <main>
         <div className={`stage ${view === "map" ? "" : "away"}`} aria-hidden={view !== "map"}>
-          <MapView active={view === "map"} map={map} steps={steps} groups={groups} places={places} people={people} land={landBy === "off" ? null : land} landBy={landBy === "realms" ? "realms" : "peoples"} realms={realms} links={showTrade ? links : []} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
+          <MapView active={view === "map"} map={map} steps={steps} groups={groups} places={places} people={people} land={landBy === "off" ? null : land} landBy={landBy === "realms" ? "realms" : "peoples"} realms={realms} wars={wars} year={stats?.year ?? 0} links={showTrade ? links : []} selected={selected} focus={focus} onSelect={selectFromMap} onPerson={showPerson} />
+          {banner ? (
+            <div key={banner.seq} className={`banner ${banner.kind}`} role="status" onClick={() => setBanner(null)}>
+              <strong>{t(BANNER_TITLES[banner.kind])}</strong>
+              <span>{banner.text}</span>
+            </div>
+          ) : null}
           <button
             className={`map-toggle ${landBy === "off" ? "" : "on"}`}
             aria-label={`${t("land")}: ${t(landBy === "peoples" ? "landPeoples" : landBy === "realms" ? "landRealms" : "landOff")}`}
@@ -1014,7 +1069,7 @@ export function App() {
           </aside>
         </div>
 
-        {view === "numbers" && stats ? <Numbers stats={stats} series={series} discoveries={discoveries} peoples={peoples} realms={realms} worldStores={worldStores} lang={lang} t={t} /> : null}
+        {view === "numbers" && stats ? <Numbers stats={stats} series={series} discoveries={discoveries} peoples={peoples} realms={realms} wars={wars} worldStores={worldStores} lang={lang} t={t} /> : null}
 
         {view === "clans" ? (
           <div className="page clans-page">

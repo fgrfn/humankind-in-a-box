@@ -16,7 +16,7 @@ spear:
   requires: [stone_tools]
   base_chance_per_year: 0.0001
   factors: {hungry: 2.0, crafty: 1.4}
-  effects: {harvest_percent: {game: 40}}
+  effects: {harvest_percent: {game: 40}, war_percent: 10}
 fishing:
   name: {de: Fischfang, en: Fishing}
   needs_nearby: [fish]
@@ -73,7 +73,7 @@ bow:
   requires: [spear, cordage]
   base_chance_per_year: 0.0002
   factors: {hungry: 1.8, crafty: 1.5}
-  effects: {harvest_percent: {game: 35}}
+  effects: {harvest_percent: {game: 35}, war_percent: 15}
 nets:
   name: {de: Fischnetze, en: Fishing nets}
   requires: [fishing, cordage]
@@ -182,7 +182,7 @@ wheel:
   requires: [pottery, herding]
   base_chance_per_year: 0.0002
   factors: {crafty: 1.8, large: 1.5}
-  effects: {harvest_percent: {soil: 10}, group_adults: 8}
+  effects: {harvest_percent: {soil: 10}, group_adults: 8, war_percent: 10}
 tally_marks:
   name: {de: Zählzeichen, en: Tally marks}
   requires: [granary]
@@ -197,21 +197,21 @@ copper_working:
   needs_nearby: [copper_ore]
   base_chance_per_year: 0.0003
   factors: {crafty: 2.0, settled: 1.5}
-  effects: {harvest_percent: {plants: 10, game: 10, soil: 10}}
+  effects: {harvest_percent: {plants: 10, game: 10, soil: 10}, war_percent: 15}
 bronze:
   name: {de: Bronze, en: Bronze}
   requires: [copper_working]
   needs_nearby: [tin_ore]
   base_chance_per_year: 0.0004
   factors: {crafty: 1.8, large: 1.5}
-  effects: {harvest_percent: {game: 15, soil: 15}, mortality_percent: 98, group_adults: 10}
+  effects: {harvest_percent: {game: 15, soil: 15}, mortality_percent: 98, group_adults: 10, war_percent: 30}
 iron_working:
   name: {de: Eisenverarbeitung, en: Iron working}
   requires: [copper_working]
   needs_nearby: [iron_ore, wood]
   base_chance_per_year: 0.0002
   factors: {crafty: 1.8, large: 1.5}
-  effects: {harvest_percent: {soil: 30, plants: 10}, group_adults: 12}
+  effects: {harvest_percent: {soil: 30, plants: 10}, group_adults: 12, war_percent: 40}
 masonry:
   name: {de: Mauerwerk, en: Masonry}
   requires: [stone_tools, mud_brick]

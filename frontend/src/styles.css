@@ -228,6 +228,12 @@ button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 .peoples .count { text-align: right; font-variant-numeric: tabular-nums; color: var(--chalk); }
 .peoples .state { grid-column: 1 / -1; font-size: 15px; color: var(--muted); }
 .peoples .gone .name, .peoples .gone .count { color: var(--muted); font-weight: 400; }
+.wars { list-style: none; margin: 0 0 40px; padding: 0; border-top: 1px solid var(--line); }
+.wars li { padding: 11px 0 11px 12px; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; }
+.wars li.ongoing { border-left-color: #e8453c; }
+.wars .name { display: block; font: 600 17px/1.3 var(--prose); color: var(--chalk); }
+.wars .name .chip { margin: 0 6px 0 4px; }
+.wars .state { display: block; font-size: 15px; color: var(--muted); }
 
 /* Switch on the map: show or hide who holds the land. */
 .map-toggle { position: absolute; left: 14px; top: 14px; z-index: 2; min-height: 40px; padding: 0 14px; font: 500 15px/1 var(--data, inherit); color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
@@ -305,3 +311,15 @@ button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 .tree-node:focus-visible { outline: none; }
 .tree-node:focus-visible rect:first-child { stroke: var(--ochre); stroke-width: 3; }
 .plain.link { display: inline-block; margin: 6px 14px 0 0; padding: 0; color: var(--ochre); text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; cursor: pointer; font: inherit; }
+
+/* Great moments: war, conquest, peace, a new realm. Shown over the map for a
+   few seconds, never blocking it (a tap dismisses, the map below stays usable). */
+.banner { position: absolute; left: 50%; top: 18%; z-index: 4; transform: translateX(-50%); width: min(640px, calc(100% - 32px)); padding: 18px 26px 20px; text-align: center; background: rgba(12, 28, 36, 0.86); border: 1px solid var(--line); border-top: 4px solid var(--ochre); border-radius: 6px; cursor: pointer; animation: banner-in 6s ease forwards; }
+.banner strong { display: block; font: 700 clamp(36px, 7vw, 64px)/1 var(--prose); letter-spacing: 0.02em; color: var(--ochre); }
+.banner span { display: block; margin-top: 10px; font: 400 clamp(16px, 2.2vw, 20px)/1.35 var(--prose); color: var(--chalk); }
+.banner.war_begun, .banner.realm_conquered { border-top-color: #e8453c; }
+.banner.war_begun strong, .banner.realm_conquered strong { color: #f0685f; }
+.banner.peace_made { border-top-color: #d9d4c7; }
+.banner.peace_made strong { color: #ece6d6; }
+@keyframes banner-in { 0% { opacity: 0; transform: translate(-50%, -8px) scale(0.96); } 8% { opacity: 1; transform: translate(-50%, 0) scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .banner { animation: none; } }

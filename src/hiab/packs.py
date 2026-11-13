@@ -115,6 +115,7 @@ class TechEffects(_Model):
     storage_months: int = Field(0, ge=0, le=60)  # added to the months of food a clan can keep
     enables_settlement: bool = False
     group_adults: int = Field(0, ge=0, le=100000)  # more adults a group can hold together
+    war_percent: int = Field(0, ge=0, le=1000)  # added to the fighting strength of a clan
 
 
 class Technology(_Model):
@@ -203,7 +204,7 @@ class LifeParams(_Model):
     realm_found_chance_per_year: float = Field(0.01, ge=0.0, le=1.0)
     realm_join_chance_per_year: float = Field(0.05, ge=0.0, le=1.0)
     realm_reach: int = Field(14, ge=1, le=200)
-    realm_max_clans: int = Field(20, ge=1, le=10000)
+    realm_max_clans: int = Field(30, ge=1, le=10000)
     realm_break_on_succession: float = Field(0.12, ge=0.0, le=1.0)
     # Over generations a chiefdom becomes one people: clans of other peoples in
     # it take up the language of the seat. Clans that split off stay in it. A
@@ -212,6 +213,21 @@ class LifeParams(_Model):
     realm_assimilate_chance_per_year: float = Field(0.05, ge=0.0, le=1.0)
     realm_union_chance: float = Field(0.25, ge=0.0, le=1.0)
     realm_settled_years: int = Field(60, ge=0, le=100000)
+    # War. Chiefdoms whose seats lie close may go to war. Once a year there is
+    # a battle: strength is adults, raised by knowledge, and the defender has
+    # the advantage of its own ground. The loser loses the clan nearest the
+    # enemy, or everything when only the seat is left. Fighters fall on both
+    # sides. Peace comes by chance, sooner the longer it lasts.
+    war_chance_per_year: float = Field(0.015, ge=0.0, le=1.0)
+    war_reach: int = Field(28, ge=1, le=400)
+    war_defender_percent: int = Field(120, ge=10, le=1000)
+    war_fallen_per_adults: int = Field(15, ge=1, le=10000)
+    peace_chance_per_year: float = Field(0.2, ge=0.0, le=1.0)
+    # While at war a share of the men of fighting age goes to the field every
+    # month instead of out for food, and the winner of a battle takes a share
+    # of what the beaten clan has stored.
+    war_fighters_percent: int = Field(30, ge=0, le=100)
+    war_plunder_percent: int = Field(25, ge=0, le=100)
     # Land. Every clan holds the tiles around its camp on which nobody presses
     # harder. How hard it presses follows from its adults, what it has built and
     # whether it is settled; hunger weakens it. Strangers gather less on held land.

@@ -192,6 +192,8 @@ def create_app(
                 "WHERE world_id = ? AND dissolved IS NULL"
             ),
             "realms": one("SELECT COUNT(*) FROM realms WHERE world_id = ? AND ended IS NULL"),
+            "wars_ongoing": one("SELECT COUNT(*) FROM wars WHERE world_id = ? AND ended IS NULL"),
+            "wars_total": one("SELECT COUNT(*) FROM wars WHERE world_id = ?"),
             "births_total": total("people.births"),
             "deaths_total": total("people.deaths"),
             "migrations_total": total("clans.migrations"),
@@ -557,6 +559,49 @@ def create_app(
         realms_held = [of_realm.get(clan, 0) for clan in clans]
         return {"clans": clans, "peoples": peoples_held, "realms": realms_held}
 
+    @api.get("/worlds/{world_id}/wars")
+    def wars(world_id: int, conn: Db) -> list[dict[str, Any]]:
+        """Wars between chiefdoms, ongoing first, then the latest. With the seats, for the map."""
+        world_row(conn, world_id)
+        realm_rows = {
+            row["id"]: row
+            for row in _rows(
+                conn,
+                "SELECT r.id, r.name, g.y, g.x FROM realms r LEFT JOIN groups g "
+                "ON g.world_id = r.world_id AND g.id = r.seat_group WHERE r.world_id = ?",
+                (world_id,),
+            )
+        }
+
+        def side(realm_id: int) -> dict[str, Any]:
+            row = realm_rows.get(realm_id)
+            return {
+                "id": realm_id,
+                "name": None if row is None else row["name"],
+                "y": None if row is None else row["y"],
+                "x": None if row is None else row["x"],
+            }
+
+        out = [
+            {
+                "id": row["id"],
+                "attacker": side(row["attacker"]),
+                "defender": side(row["defender"]),
+                "started_year": row["started"] // 360,
+                "ended_year": None if row["ended"] is None else row["ended"] // 360,
+                "outcome": row["outcome"],
+                "winner_id": row["winner"] or None,
+                "field": None if row["field_y"] < 0 else {"y": row["field_y"], "x": row["field_x"]},
+                "last_battle_year": row["last_battle"] // 360 if row["battles"] else None,
+                "last_fallen": row["last_fallen"],
+                "battles": row["battles"],
+                "fallen": row["fallen"],
+            }
+            for row in _rows(conn, "SELECT * FROM wars WHERE world_id = ? ORDER BY id", (world_id,))
+        ]
+        out.sort(key=lambda w: (w["ended_year"] is not None, -w["started_year"], -w["id"]))
+        return out[:100]
+
     @api.get("/worlds/{world_id}/realms")
     def realms(world_id: int, conn: Db) -> list[dict[str, Any]]:
         """Chiefdoms, standing first: seat, ruler, people, clans, heads and land."""
@@ -816,6 +861,8 @@ def create_app(
             return f"baut: {name}" if language == "de" else f"building: {name}"
         if kind == "search":
             return "sucht Nahrung" if language == "de" else "searching for food"
+        if kind == "fight":
+            return "zieht in den Krieg" if language == "de" else "off to war"
         resource = packs.resources.get(kind)
         if resource is None:
             return ""
