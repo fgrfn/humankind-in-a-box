@@ -2694,14 +2694,16 @@ class Society:
         if clan.settled:
             # A village of a land is not given up: the land's store sees it through.
             starving = self.unmet_average(clan) >= p.abandon_hunger_percent
+            # A village is never moved or given up while people live in it. In
+            # hard years some families leave to seek a living elsewhere instead.
             if (
                 starving
                 and self.land_of(clan) is None
-                and world.roll(
-                    "abandon_settlement", "group", clan.id, p.abandon_chance_per_year, []
-                )
+                and len(adults) >= 4
+                and world.roll("hunger_emigration", "group", clan.id, p.abandon_chance_per_year, [])
             ):
-                self.abandon_place(clan)
+                world.count("settlements.emigrated")
+                self.split(clan)
         elif world.tick - clan.arrived >= p.settle_years * DAYS_PER_YEAR and any(
             packs.technologies[t].effects.enables_settlement
             for t in sorted(clan.techs)
@@ -2755,20 +2757,13 @@ class Society:
                 self.dissolve(clan, "clan_merged", {"host": host.name, "host_id": host.id})
 
     def settle(self, clan: Clan) -> None:
-        # Who settles near an abandoned place moves into it: its houses are
-        # used again, whoever built them. The nearest such place within two tiles.
-        taken = {(other.y, other.x) for other in self.clans.values() if other.id != clan.id}
-        near = sorted(
-            (max(abs(place["y"] - clan.y), abs(place["x"] - clan.x)), pid)
-            for pid, place in self.places.items()
-            if place["abandoned"] is not None
-            and max(abs(place["y"] - clan.y), abs(place["x"] - clan.x)) <= 2
-            and (place["y"], place["x"]) not in taken
-        )
-        existing = [self.places[near[0][1]]] if near else []
-        if existing and (existing[0]["y"], existing[0]["x"]) != (clan.y, clan.x):
-            clan.y, clan.x = existing[0]["y"], existing[0]["x"]
-            self.world.count("settlements.moved_into_old")
+        existing = [
+            self.places[pid]
+            for pid in sorted(self.places)
+            if self.places[pid]["y"] == clan.y
+            and self.places[pid]["x"] == clan.x
+            and self.places[pid]["abandoned"] is not None
+        ]
         if existing:
             # An abandoned place keeps its name, and whatever still stands there is used again.
             place = existing[0]
@@ -3305,6 +3300,12 @@ class Society:
                 camp_grid[cy, cx] += 1
         crowd = np.minimum(_box_sum(camp_grid, 2 * p.forage_radius), 3)
         score = score // np.array([1, 3, 9, 27], dtype=np.int64)[crowd]
+        # An abandoned place draws newcomers: its houses can be used again.
+        for place_id in sorted(self.places):
+            place = self.places[place_id]
+            py, px = place["y"] - y_start, place["x"] - x_start
+            if place["abandoned"] is not None and 0 <= py < shape[0] and 0 <= px < shape[1]:
+                score[py, px] = score[py, px] * 3 // 2
 
         ys = np.arange(shape[0])[:, None] + y_start
         xs = np.arange(shape[1])[None, :] + x_start
