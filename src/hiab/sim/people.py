@@ -246,11 +246,11 @@ class Society:
         return (self.world.tick - person.born) // DAYS_PER_YEAR
 
     def adults(self, clan: Clan) -> list[Person]:
-        return [
-            self.persons[pid]
-            for pid in clan.members
-            if self.age(self.persons[pid]) >= self.p.adult_age
-        ]
+        # Born on or before this day: grown up. The same as age() >= adult_age.
+        cutoff = self.world.tick - self.p.adult_age * DAYS_PER_YEAR
+        persons = self.persons
+        members = map(persons.__getitem__, clan.members)
+        return [person for person in members if person.born <= cutoff]
 
     def living(self) -> int:
         return sum(len(self.clans[cid].members) for cid in self.clans)
@@ -2742,13 +2742,20 @@ class Society:
                 self.dissolve(clan, "clan_merged", {"host": host.name, "host_id": host.id})
 
     def settle(self, clan: Clan) -> None:
-        existing = [
-            self.places[pid]
-            for pid in sorted(self.places)
-            if self.places[pid]["y"] == clan.y
-            and self.places[pid]["x"] == clan.x
-            and self.places[pid]["abandoned"] is not None
-        ]
+        # Who settles near an abandoned place moves into it: its houses are
+        # used again, whoever built them. The nearest such place within two tiles.
+        taken = {(other.y, other.x) for other in self.clans.values() if other.id != clan.id}
+        near = sorted(
+            (max(abs(place["y"] - clan.y), abs(place["x"] - clan.x)), pid)
+            for pid, place in self.places.items()
+            if place["abandoned"] is not None
+            and max(abs(place["y"] - clan.y), abs(place["x"] - clan.x)) <= 2
+            and (place["y"], place["x"]) not in taken
+        )
+        existing = [self.places[near[0][1]]] if near else []
+        if existing and (existing[0]["y"], existing[0]["x"]) != (clan.y, clan.x):
+            clan.y, clan.x = existing[0]["y"], existing[0]["x"]
+            self.world.count("settlements.moved_into_old")
         if existing:
             # An abandoned place keeps its name, and whatever still stands there is used again.
             place = existing[0]
@@ -3329,7 +3336,8 @@ class Society:
         for step in range(1, distance + 1):
             y = y0 + (y1 - y0) * step // distance
             x = x0 + (x1 - x0) * step // distance
-            self.steps[y, x] += people
+            if not self.world.map.water[y, x]:  # no footsteps on open water
+                self.steps[y, x] += people
 
     def maybe_migrate(self, clan: Clan, month: int) -> None:
         world, p = self.world, self.p

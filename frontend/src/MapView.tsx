@@ -1,4 +1,14 @@
 import { Application, Assets, Container, Graphics, Sprite, type Spritesheet, Text } from "pixi.js";
+
+// Day and night: one turn of the sun takes this many real seconds. Only for
+// show; the simulation counts days of its own.
+const DAY_SECONDS = 240;
+
+// How dark it is now, 0 by day to 1 at midnight, with dawn and dusk between.
+function nightLevel(seconds: number): number {
+  const light = 0.5 + 0.5 * Math.cos((2 * Math.PI * (seconds % DAY_SECONDS)) / DAY_SECONDS);
+  return Math.min(1, Math.max(0, (0.42 - light) / 0.32));
+}
 import { useEffect, useRef } from "react";
 import { faithColour, peopleColour, realmColour } from "./colours";
 import type { Building, Faith, Group, Human, Land, Place, Realm, TradeLink, War, WorldMap } from "./api";
@@ -66,6 +76,24 @@ const BUILDING_SPRITES: Record<string, string> = {
 };
 
 // A fixed number per tile, so the same world always looks the same.
+// Is a land tile next to the open sea (any of its eight neighbours)?
+function besideSea(map: WorldMap, x: number, y: number): boolean {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if ((dx || dy) && nx >= 0 && ny >= 0 && nx < map.width && ny < map.height) {
+        const biome = map.biomes[map.biome[ny * map.width + nx]];
+        if (biome === "ocean" || biome === "coast") return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Things that are built and so never move with a camp.
+const FIXED_EXTRAS = new Set(["longhouse", "palisade", "smithy", "healer_hut", "stone_circle", "shrine", "jetty", "boat_builder", "pen", "fish_net"]);
+
 // The nearest sea tile within two tiles of a camp, if any.
 function nearestSea(map: WorldMap, x: number, y: number): [number, number] | null {
   let best: [number, number] | null = null;
@@ -244,7 +272,7 @@ class Crowd {
 
   // The walk from the camp to the tile nearest to where the work is. Fish live
   // in the water, so a fisher ends up on the shore next to it.
-  private route(band: Band, tx: number, ty: number): [number, number][] {
+  private route(band: Band, tx: number, ty: number, who = 0): [number, number][] {
     const map = this.map!;
     let best = band.y * map.width + band.x;
     let bestGap = Infinity;
@@ -266,7 +294,19 @@ class Crowd {
     tiles.reverse();
     // With boats, fishers paddle out from the shore to the fish.
     const [ex, ey] = tiles[tiles.length - 1];
-    if (band.techs.has("boats") && !this.dry(tx, ty) && Math.max(Math.abs(tx - ex), Math.abs(ty - ey)) <= 3) tiles.push([tx, ty]);
+    if (band.techs.has("boats") && !this.dry(tx, ty) && Math.max(Math.abs(tx - ex), Math.abs(ty - ey)) <= 3) {
+      // Each boat finds its own spot on the water around the fish, not all on one tile.
+      let [bx, by] = [tx, ty];
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const nx = tx + (tileNoise(who, attempt, 41) % 5) - 2;
+        const ny = ty + (tileNoise(who, attempt, 42) % 5) - 2;
+        if (nx >= 0 && ny >= 0 && nx < map.width && ny < map.height && !this.dry(nx, ny)) {
+          [bx, by] = [nx, ny];
+          break;
+        }
+      }
+      tiles.push([bx, by]);
+    }
     return tiles;
   }
 
@@ -285,6 +325,7 @@ class Crowd {
   }
 
   private sheet: Spritesheet | null = null;
+  night = 0;
 
   sync(layer: Container, sheet: Spritesheet, map: WorldMap, groups: Group[], people: Human[]): void {
     this.sheet = sheet;
@@ -384,7 +425,9 @@ class Crowd {
           lift = Math.abs(Math.sin(walker.clock * 4)) * 0.9;
           walker.sprite.scale.x = Math.sin(walker.clock * 0.7 + walker.dx) > 0 ? FIGURE_SCALE : -FIGURE_SCALE;
         }
-        if (walker.wait <= 0) {
+        if (walker.wait <= 0 && walker.task === "rest" && this.night > 0.6) {
+          walker.wait = 3; // at night people stay by the fire
+        } else if (walker.wait <= 0) {
           if (walker.task === "work") {
             walker.path = [...walker.path].reverse();
             walker.task = "back";
@@ -393,7 +436,7 @@ class Crowd {
             if (person.activity.startsWith("fight:") && person.x >= 0) {
               walker.path = this.march(band, person.x, person.y);
             } else if (person.activity && person.x >= 0) {
-              walker.path = this.route(band, person.x, person.y);
+              walker.path = this.route(band, person.x, person.y, person.id);
             } else if (band.near.length) {
               // Children and those without work stay around the camp.
               const index = band.near[Math.floor(Math.random() * band.near.length)];
@@ -459,6 +502,8 @@ interface Scene {
   wildlife: Container;
   buildings: Container;
   lodges: Container;
+  night: Graphics;
+  lights: Container;
   people: Container;
   camps: Container;
   sheet: Spritesheet | null;
@@ -544,9 +589,24 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         // Camps' huts and tents stand with the buildings, below the people;
         // big names and the small name plates are drawn over everything.
         const lodges = new Container();
-        world.addChild(terrain, fields, paths, borders, routes, nature, wildlife, buildings, lodges, people, names, camps);
+        // Night falls over the land and the people; lights burn at the camps;
+        // names stay readable above it.
+        const night = new Graphics();
+        night.rect(-100000, -100000, 200000, 200000).fill(0x0a1633);
+        night.alpha = 0;
+        const lights = new Container();
+        lights.blendMode = "add";
+        lights.alpha = 0;
+        world.addChild(terrain, fields, paths, borders, routes, nature, wildlife, buildings, lodges, people, night, lights, names, camps);
         app.stage.addChild(world);
-        scene.current = { app, world, terrain, paths, borders, names, routes, fields, nature, wildlife, buildings, lodges, people, camps, sheet, natureAt: new Map(), natureKind: new Map() };
+        scene.current = { app, world, terrain, paths, borders, names, routes, fields, nature, wildlife, buildings, lodges, people, camps, night, lights, sheet, natureAt: new Map(), natureKind: new Map() };
+        const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+        app.ticker.add(() => {
+          const dark = still ? 0 : nightLevel(performance.now() / 1000);
+          night.alpha = dark * 0.55;
+          lights.alpha = dark;
+          crowd.current.night = dark;
+        });
         app.ticker.add((ticker) => {
           people.visible = world.scale.x >= 0.9; // too small to read from far away
           if (!people.visible) return;
@@ -685,6 +745,11 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           const choices = GROUND[name] ?? ["grass"];
           let ground = choices[tileNoise(x >> 1, y >> 1, 1) % choices.length];
           if (name === "mountain" && map.elevation[index] >= snowLine) ground = "snow";
+          // Where land meets the sea there is mostly a beach: sand, mud in the
+          // marshes, rock below mountains, snow or sand on cold shores.
+          if (!map.river[index] && name !== "ocean" && name !== "coast" && besideSea(map, x, y) && tileNoise(x, y, 51) < 85) {
+            ground = name === "mountain" ? "rock" : name === "marsh" ? "mud" : name === "tundra" && tileNoise(x, y, 52) < 40 ? "snow" : "sand";
+          }
           const texture = textures[ground];
           if (texture) {
             const tile = new Sprite(texture);
@@ -785,7 +850,8 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           const count = steps[index];
           const grown = current.natureAt.get(index);
           if (grown) grown.visible = count < trail && !taken.has(index);
-          if (count < trail / 2 || map.river[index]) continue;
+          const biomeName = map.biomes[map.biome[index]];
+          if (count < trail / 2 || map.river[index] || biomeName === "ocean" || biomeName === "coast") continue; // no paths on water
           const alpha = count >= road ? 1 : count >= trail ? 0.8 : 0.1 + (0.4 * count) / trail;
           const [cx, cy] = project(x, y);
           if (texture) {
@@ -1144,6 +1210,18 @@ export function MapView({ active, map, steps, groups, places, people, land, land
       const layer = current.camps as Container & { wasDragged?: () => boolean };
       for (const child of layer.removeChildren()) child.destroy({ children: true });
       for (const child of current.lodges.removeChildren()) child.destroy({ children: true });
+      for (const child of current.lights.removeChildren()) child.destroy();
+      for (const group of groups) {
+        // The warm light of the hearths, larger where many live.
+        const [lx, ly] = project(group.x, group.y);
+        const glow = new Graphics();
+        const size = Math.min(34, 12 + Math.sqrt(group.population) * 2);
+        glow.circle(0, 0, size).fill({ color: 0xff9a3c, alpha: 0.18 });
+        glow.circle(0, 0, size * 0.55).fill({ color: 0xffb860, alpha: 0.28 });
+        glow.circle(0, 0, size * 0.22).fill({ color: 0xffd9a0, alpha: 0.45 });
+        glow.position.set(lx, ly + TILE_H / 2);
+        current.lights.addChild(glow);
+      }
       const before = campsAt.current;
       const now = new Map<number, [number, number]>();
       const gliding: [Container, number, number, number, number][] = [];
@@ -1158,9 +1236,11 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         if (was && (was[0] !== cx || was[1] !== cy + TILE_H / 2)) {
           // A camp that moved glides to its new place instead of jumping.
           gliding.push([marker, was[0], was[1], cx, cy + TILE_H / 2]);
-          gliding.push([lodge, was[0], was[1], cx, cy + TILE_H / 2]);
           marker.position.set(was[0], was[1]);
-          lodge.position.set(was[0], was[1]);
+          if (!group.settled) {
+            gliding.push([lodge, was[0], was[1], cx, cy + TILE_H / 2]);
+            lodge.position.set(was[0], was[1]);
+          }
         }
         current.lodges.addChild(lodge);
         const g = new Graphics();
@@ -1184,6 +1264,8 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         // a settlement that works metal has a smithy.
         const sheetTextures = current.sheet?.textures ?? {};
         const extra = (name: string, x: number, y: number, size: number, flip = false) => {
+          // What is built stands where it was built: wanderers carry only what can be carried.
+          if (!group.settled && FIXED_EXTRAS.has(name)) return;
           const texture = sheetTextures[name];
           if (!texture) return;
           const sprite = new Sprite(texture);
@@ -1223,7 +1305,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           // Where a faith began stands a stone circle; settled believers keep a
           // shrine, wanderers a sacred fire.
           const origin = faiths.find((faith) => faith.id === group.faith!.id)?.origin_id === group.id;
-          if (origin) extra("stone_circle", -TILE_W * 0.7, -TILE_H * 0.3, SPRITE_SCALE * 0.7);
+          if (origin && group.settled) extra("stone_circle", -TILE_W * 0.7, -TILE_H * 0.3, SPRITE_SCALE * 0.7);
           else if (group.settled) extra("shrine", -TILE_W * 0.6, -TILE_H * 0.35, SPRITE_SCALE * 0.6);
           else extra("sacred_fire", -TILE_W * 0.45, TILE_H * 0.2, SPRITE_SCALE * 0.5);
         }
