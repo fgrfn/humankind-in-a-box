@@ -988,18 +988,30 @@ export function App() {
       const num = (key: string) => (typeof data[key] === "number" ? (data[key] as number) : null);
       const war = num("war_id") === null ? undefined : wars.find((item) => item.id === num("war_id"));
       if (war?.field) return () => showTile(war.field!.y, war.field!.x);
-      const clanId = num("clan_id");
-      if (clanId !== null && groups.some((group) => group.id === clanId)) return () => showOnMap(clanId);
-      for (const key of ["realm_id", "enemy_id", "to_id", "winner_id"]) {
+      const place = num("place_id") === null ? undefined : places.find((item) => item.id === num("place_id"));
+      if (place) return () => showTile(place.y, place.x);
+      for (const key of ["clan_id", "new_clan_id", "partner_id", "teacher_id"]) {
+        const clanId = num(key);
+        if (clanId !== null && groups.some((group) => group.id === clanId)) return () => showOnMap(clanId);
+      }
+      for (const key of ["realm_id", "enemy_id", "to_id", "winner_id", "loser_id"]) {
         const realm = num(key) === null ? undefined : realms.find((item) => item.id === num(key) && item.ended_year === null);
         if (realm) return () => showOnMap(realm.seat_id);
+      }
+      for (const key of ["people_id", "from_id"]) {
+        // A people is shown at its largest clan.
+        const members = groups.filter((group) => group.people_id === num(key));
+        if (members.length) {
+          const largest = members.reduce((a, b) => (b.population > a.population ? b : a));
+          return () => showOnMap(largest.id);
+        }
       }
       const personId = num("person");
       const home = personId === null ? undefined : people.find((item) => item.id === personId);
       if (home) return () => showOnMap(home.clan);
       return null;
     },
-    [wars, groups, realms, people, showOnMap, showTile],
+    [wars, places, groups, realms, people, showOnMap, showTile],
   );
 
   const sortedGroups = useMemo(() => [...groups].sort((a, b) => b.population - a.population || a.id - b.id), [groups]);
