@@ -276,6 +276,14 @@ class World:
                     for target in range(self.map.region_count) if region < 0 else [region]:
                         self.modifiers.append((until, target, resource, effect.percent))
 
+    def _capacity64(self, resource: str) -> tuple[np.ndarray, np.ndarray]:
+        """Capacity of a stock as int64, and the same at least 1, made once."""
+        cache = self.__dict__.setdefault("_capacity_cache", {})
+        if resource not in cache:
+            capacity = self.capacity[resource].astype(np.int64)
+            cache[resource] = (capacity, np.maximum(capacity, 1))
+        return cache[resource]
+
     def _ecology(self) -> None:
         self.modifiers = [m for m in self.modifiers if m[0] > self.tick]
         season = season_of(self.tick)
@@ -284,17 +292,21 @@ class World:
             rate = definition.regrowth_percent_per_month * definition.season_percent.get(
                 season, 100
             )
-            modifier = np.full(self.map.region_count, 100, dtype=np.int64)
-            for _until, region, modified, percent in self.modifiers:
-                if modified == resource:
-                    modifier[region] = (modifier[region] * percent) // 100
+            modified_here = [m for m in self.modifiers if m[2] == resource]
             stock = self.stocks[resource].astype(np.int64)
-            capacity = self.capacity[resource].astype(np.int64)
+            capacity, divisor = self._capacity64(resource)
             # Logistic regrowth: a healthy stock recovers fastest, an exhausted one
             # only slowly, so overuse has lasting consequences.
             gap = capacity - stock
-            base = stock * gap // np.maximum(capacity, 1) + gap // 20
-            growth = (base * rate * modifier[self.map.region]) // 1_000_000
+            base = stock * gap // divisor + gap // 20
+            if modified_here:
+                modifier = np.full(self.map.region_count, 100, dtype=np.int64)
+                for _until, region, _modified, percent in modified_here:
+                    modifier[region] = (modifier[region] * percent) // 100
+                growth = (base * rate * modifier[self.map.region]) // 1_000_000
+            else:
+                # Without modifiers every region grows at 100 percent.
+                growth = (base * (rate * 100)) // 1_000_000
             self.stocks[resource] = np.minimum(capacity, stock + growth).astype(np.int32)
 
     def _flush_year_metrics(self) -> None:

@@ -223,6 +223,9 @@ class Society:
         self.campable = ~world.map.water & ~world.map.river
         self.landmass, self.landmass_size = self.label_landmasses()
         self.landed: set[int] = set()  # landmasses anyone has ever camped on
+        # Answers that depend only on the fixed map, per camp tile.
+        self._goods_at: dict[tuple[int, int], list[str]] = {}
+        self._grows_at: dict[tuple[str, int, int], bool] = {}
         self._effects: dict[int, tuple[dict[str, int], float, int, int]] = {}
         self._labour: dict[int, int] = {}
         self.gifts: dict[int, set[str]] = {}
@@ -246,11 +249,11 @@ class Society:
         return (self.world.tick - person.born) // DAYS_PER_YEAR
 
     def adults(self, clan: Clan) -> list[Person]:
-        return [
-            self.persons[pid]
-            for pid in clan.members
-            if self.age(self.persons[pid]) >= self.p.adult_age
-        ]
+        # Born on or before this day: grown up. The same as age() >= adult_age.
+        cutoff = self.world.tick - self.p.adult_age * DAYS_PER_YEAR
+        persons = self.persons
+        members = map(persons.__getitem__, clan.members)
+        return [person for person in members if person.born <= cutoff]
 
     def living(self) -> int:
         return sum(len(self.clans[cid].members) for cid in self.clans)
@@ -698,12 +701,14 @@ class Society:
         # On land another people holds, strangers get less: they are watched and driven off.
         held_by = self.land_people[area]
         foreign = (held_by != 0) & (held_by != clan.culture)
+        any_foreign = bool(foreign.any())
         for rid in self.food_ids:
             percent = harvest_percent[rid]
             if percent <= 0:
                 continue
             raw = world.stocks[rid][area].astype(np.int64) * p.harvest_share_percent // 100
-            raw = np.where(foreign, raw * p.foreign_harvest_percent // 100, raw)
+            if any_foreign:
+                raw = np.where(foreign, raw * p.foreign_harvest_percent // 100, raw)
             amount = int(raw.sum()) * percent // 100 * world.packs.resources[rid].food_value
             if amount > 0:
                 raws[rid], foods[rid] = raw, amount
@@ -1480,8 +1485,11 @@ class Society:
     def nearby(self, clan: Clan, resource_id: str) -> bool:
         world = self.world
         if resource_id in world.capacity:
-            area = self.window(clan.y, clan.x, self.p.forage_radius)
-            return bool((world.capacity[resource_id][area] > 0).any())
+            key = (resource_id, clan.y, clan.x)
+            if key not in self._grows_at:
+                area = self.window(clan.y, clan.x, self.p.forage_radius)
+                self._grows_at[key] = bool((world.capacity[resource_id][area] > 0).any())
+            return self._grows_at[key]
         if resource_id in world.map.deposit_ids:
             if clan.stores.get(resource_id, 0) > 0 or resource_id in self.goods(clan):
                 return True
@@ -1494,11 +1502,16 @@ class Society:
         return False
 
     def goods(self, clan: Clan) -> list[str]:
-        """The deposits a clan has within reach of its camp."""
-        world = self.world
-        area = self.window(clan.y, clan.x, self.p.forage_radius + 2)
-        present = {int(index) for index in np.unique(world.map.deposit[area]) if index >= 0}
-        return [world.map.deposit_ids[index] for index in sorted(present)]
+        """The deposits a clan has within reach of its camp. The map never
+        changes, so the answer per camp tile is worked out once."""
+        key = (clan.y, clan.x)
+        cache = self._goods_at
+        if key not in cache:
+            world = self.world
+            area = self.window(clan.y, clan.x, self.p.forage_radius + 2)
+            present = {int(index) for index in np.unique(world.map.deposit[area]) if index >= 0}
+            cache[key] = [world.map.deposit_ids[index] for index in sorted(present)]
+        return cache[key]
 
     def unlink(self, clan: Clan, partner_id: int) -> None:
         clan.partners.pop(partner_id, None)
@@ -2742,13 +2755,20 @@ class Society:
                 self.dissolve(clan, "clan_merged", {"host": host.name, "host_id": host.id})
 
     def settle(self, clan: Clan) -> None:
-        existing = [
-            self.places[pid]
-            for pid in sorted(self.places)
-            if self.places[pid]["y"] == clan.y
-            and self.places[pid]["x"] == clan.x
-            and self.places[pid]["abandoned"] is not None
-        ]
+        # Who settles near an abandoned place moves into it: its houses are
+        # used again, whoever built them. The nearest such place within two tiles.
+        taken = {(other.y, other.x) for other in self.clans.values() if other.id != clan.id}
+        near = sorted(
+            (max(abs(place["y"] - clan.y), abs(place["x"] - clan.x)), pid)
+            for pid, place in self.places.items()
+            if place["abandoned"] is not None
+            and max(abs(place["y"] - clan.y), abs(place["x"] - clan.x)) <= 2
+            and (place["y"], place["x"]) not in taken
+        )
+        existing = [self.places[near[0][1]]] if near else []
+        if existing and (existing[0]["y"], existing[0]["x"]) != (clan.y, clan.x):
+            clan.y, clan.x = existing[0]["y"], existing[0]["x"]
+            self.world.count("settlements.moved_into_old")
         if existing:
             # An abandoned place keeps its name, and whatever still stands there is used again.
             place = existing[0]
@@ -3329,7 +3349,8 @@ class Society:
         for step in range(1, distance + 1):
             y = y0 + (y1 - y0) * step // distance
             x = x0 + (x1 - x0) * step // distance
-            self.steps[y, x] += people
+            if not self.world.map.water[y, x]:  # no footsteps on open water
+                self.steps[y, x] += people
 
     def maybe_migrate(self, clan: Clan, month: int) -> None:
         world, p = self.world, self.p
