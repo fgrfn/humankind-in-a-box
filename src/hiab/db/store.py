@@ -249,6 +249,25 @@ MIGRATIONS: list[str] = [
     ALTER TABLE groups ADD COLUMN leader INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE groups ADD COLUMN realm INTEGER NOT NULL DEFAULT 0;
     """,
+    """
+    CREATE TABLE wars (
+        world_id INTEGER NOT NULL,
+        id INTEGER NOT NULL,
+        attacker INTEGER NOT NULL,
+        defender INTEGER NOT NULL,
+        started INTEGER NOT NULL,
+        ended INTEGER,
+        outcome TEXT NOT NULL,
+        battles INTEGER NOT NULL,
+        fallen INTEGER NOT NULL,
+        winner INTEGER NOT NULL,
+        field_y INTEGER NOT NULL,
+        field_x INTEGER NOT NULL,
+        last_battle INTEGER NOT NULL,
+        last_fallen INTEGER NOT NULL,
+        PRIMARY KEY (world_id, id)
+    ) WITHOUT ROWID;
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -271,6 +290,7 @@ CONTENT_TABLES: dict[str, str] = {
     "cultures": "world_id, id",
     "trade_links": "world_id, group_a, group_b, since",
     "realms": "world_id, id",
+    "wars": "world_id, id",
 }
 
 
@@ -541,6 +561,28 @@ class Store:
         )
         self.conn.executemany(
             "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
+        )
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO wars VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [
+                (
+                    world.id,
+                    war.id,
+                    war.attacker,
+                    war.defender,
+                    war.started,
+                    war.ended,
+                    war.outcome,
+                    war.battles,
+                    war.fallen,
+                    war.winner,
+                    war.field_y,
+                    war.field_x,
+                    war.last_battle,
+                    war.last_fallen,
+                )
+                for war in (society.wars[wid] for wid in sorted(society.dirty_wars))
+            ],
         )
         self.conn.executemany(
             "INSERT OR REPLACE INTO realms VALUES (?,?,?,?,?,?,?,?)",

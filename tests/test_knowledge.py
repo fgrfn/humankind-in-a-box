@@ -40,6 +40,7 @@ RULERS = EARLY_FARMERS + (
     "life.realm_max_clans: 4\n"
     "life.realm_break_on_succession: 0.5\n"
 )
+WARRIORS = RULERS + "life.war_chance_per_year: 0.5\nlife.war_reach: 60\n"
 
 
 def world_with(settings: Settings, overrides: str) -> Settings:
@@ -151,7 +152,9 @@ def test_peoples_form_split_and_name_their_places(tmp_path: Path, settings: Sett
     assert len({place["name"] for place in places}) == len(places)
 
 
-@pytest.mark.parametrize("overrides", [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS, RULERS])
+@pytest.mark.parametrize(
+    "overrides", [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS, RULERS, WARRIORS]
+)
 def test_such_worlds_resume_identically(tmp_path: Path, settings: Settings, overrides: str) -> None:
     prepared = world_with(settings, overrides)
     simulate(tmp_path / "straight.sqlite", prepared, 110, 5)
@@ -311,3 +314,34 @@ def test_clans_follow_leaders_and_gather_into_chiefdoms(tmp_path: Path, settings
         for row in conn.execute("SELECT id, realm FROM groups WHERE dissolved IS NULL")
     }
     assert in_db == {clan.id: clan.realm for clan in society.clans.values()}
+
+
+def test_chiefdoms_go_to_war_and_conquer(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, WARRIORS), 180, 3)
+    society = world.society
+    assert society is not None
+    assert society.wars, "no war in a world built for war"
+    for war in society.wars.values():
+        assert war.attacker != war.defender
+        if war.ended is None:
+            for side in (war.attacker, war.defender):
+                assert society.realms[side].ended is None, "a war needs two standing sides"
+        if war.outcome == "conquest":
+            assert war.winner in (war.attacker, war.defender)
+    ongoing = [war for war in society.wars.values() if war.ended is None]
+    for realm_id in {side for war in ongoing for side in (war.attacker, war.defender)}:
+        assert sum(realm_id in (w.attacker, w.defender) for w in ongoing) == 1
+    # Enemies do not trade.
+    for war in ongoing:
+        theirs = {c.id for c in society.realm_clans(society.realms[war.defender])}
+        for clan in society.realm_clans(society.realms[war.attacker]):
+            assert not set(clan.partners) & theirs
+
+    conn = sqlite3.connect(path)
+    kinds = {row[0] for row in conn.execute("SELECT DISTINCT type FROM events")}
+    assert "war_begun" in kinds
+    assert {"battle", "battle_plunder"} & kinds
+    fallen = conn.execute("SELECT COUNT(*) FROM persons WHERE cause = 'war'").fetchone()[0]
+    assert fallen == sum(war.fallen for war in society.wars.values())
+    assert conn.execute("SELECT COUNT(*) FROM wars").fetchone()[0] == len(society.wars)

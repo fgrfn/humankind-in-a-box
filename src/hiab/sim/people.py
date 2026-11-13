@@ -99,6 +99,25 @@ class Realm:
 
 
 @dataclass(slots=True)
+class War:
+    """Two chiefdoms at war. The outcome: 'peace', 'conquest' or 'faded'."""
+
+    id: int
+    attacker: int  # realm
+    defender: int  # realm
+    started: int
+    ended: int | None = None
+    outcome: str = ""
+    battles: int = 0
+    fallen: int = 0
+    winner: int = 0  # realm, for a conquest
+    field_y: int = -1  # where the two sides meet
+    field_x: int = -1
+    last_battle: int = 0  # tick
+    last_fallen: int = 0
+
+
+@dataclass(slots=True)
 class Culture:
     """A people: clans of common descent that still speak alike."""
 
@@ -156,6 +175,9 @@ class Society:
         self.cultures: dict[int, Culture] = {}
         self.realms: dict[int, Realm] = {}
         self.next_realm = 1
+        self.wars: dict[int, War] = {}
+        self.next_war = 1
+        self.dirty_wars: set[int] = set()
         self.dirty_realms: set[int] = set()
         self.next_culture = 1
         self.dirty_cultures: set[int] = set()
@@ -621,6 +643,7 @@ class Society:
             place = self.places[clan.place]
             site = next((b for b in place["buildings"] if b["state"] == "site"), None)
         hungry = (clan.unmet[-1] if clan.unmet else 0) >= 20
+        adults = self.muster(clan, adults)
         adults = self.fetch_goods(clan, adults)
         if site is None or hungry or len(adults) < 2:
             return [], adults
@@ -723,6 +746,27 @@ class Society:
         self.dirty_clans.add(clan.id)
         gone = {person.id for person in going}
         return [person for person in adults if person.id not in gone]
+
+    def muster(self, clan: Clan, adults: list[Person]) -> list[Person]:
+        """At war, a share of the men of fighting age goes to the field. The rest stay."""
+        if not clan.realm:
+            return adults
+        wars = [w for w in self.at_war(clan.realm) if w.field_y >= 0]
+        if not wars:
+            return adults
+        war = wars[0]
+        if max(abs(clan.y - war.field_y), abs(clan.x - war.field_x)) > self.p.war_reach:
+            return adults
+        men = [a for a in adults if a.sex == 1 and self.age(a) <= 45]
+        count = len(men) * self.p.war_fighters_percent // 100
+        if count == 0:
+            return adults
+        fighters = sorted(men, key=lambda a: (-a.traits[0], a.id))[:count]
+        enemy = war.defender if war.attacker == clan.realm else war.attacker
+        self.set_work(fighters, f"fight:{enemy}", war.field_y, war.field_x)
+        self.walk(clan.y, clan.x, war.field_y, war.field_x, len(fighters))
+        chosen = {a.id for a in fighters}
+        return [a for a in adults if a.id not in chosen]
 
     def set_work(self, people: list[Person], activity: str, y: int, x: int) -> None:
         kind = activity.split(":", 1)[0]
@@ -1002,8 +1046,10 @@ class Society:
         world, p = self.world, self.p
         for partner_id in sorted(clan.partners):
             other = self.clans.get(partner_id)
-            apart = other is None or (
-                max(abs(other.y - clan.y), abs(other.x - clan.x)) > 2 * p.contact_radius
+            apart = (
+                other is None
+                or max(abs(other.y - clan.y), abs(other.x - clan.x)) > 2 * p.contact_radius
+                or self.hostile(clan, other)
             )
             if apart:
                 self.unlink(clan, partner_id)
@@ -1021,7 +1067,7 @@ class Society:
                 if distance > p.contact_radius:
                     break
                 other = self.clans[other_id]
-                if len(other.partners) >= p.trade_partners_max:
+                if len(other.partners) >= p.trade_partners_max or self.hostile(clan, other):
                     continue
                 theirs = set(self.goods(other))
                 offered = sorted((theirs - mine) | (mine - theirs))
@@ -1158,6 +1204,8 @@ class Society:
         )
 
     def end_realm(self, realm: Realm) -> None:
+        for war in self.at_war(realm.id):
+            self.end_war(war, "faded")
         realm.ended = self.world.tick
         self.dirty_realms.add(realm.id)
         for clan in self.clans.values():
@@ -1182,6 +1230,7 @@ class Society:
                 self.assimilate(clan, realm)
                 return
             self.reach_out(clan, realm, adults)
+            self.war_year(realm, clan)
             return
         if clan.realm:  # a realm that has ended
             clan.realm = 0
@@ -1352,6 +1401,8 @@ class Society:
         for clan in sorted(mine, key=lambda c: c.id):
             clan.realm = larger.id
             self.dirty_clans.add(clan.id)
+        for war in self.at_war(realm.id):
+            self.end_war(war, "faded")
         realm.ended = world.tick
         self.dirty_realms.add(realm.id)
         world.count("realms.united")
@@ -1365,6 +1416,268 @@ class Society:
                 "clans": len(mine),
             },
         )
+
+    # ---- war ---------------------------------------------------------------
+
+    def clan_strength(self, clan: Clan) -> int:
+        packs = self.world.packs
+        bonus = sum(
+            packs.technologies[t].effects.war_percent
+            for t in sorted(clan.techs)
+            if t in packs.technologies
+        )
+        return len(self.adults(clan)) * (100 + bonus)
+
+    def realm_clans(self, realm: Realm) -> list[Clan]:
+        return [self.clans[cid] for cid in sorted(self.clans) if self.clans[cid].realm == realm.id]
+
+    def strength(self, realm: Realm) -> int:
+        return sum(self.clan_strength(clan) for clan in self.realm_clans(realm))
+
+    def at_war(self, realm_id: int) -> list[War]:
+        return [
+            war
+            for war in (self.wars[wid] for wid in sorted(self.wars))
+            if war.ended is None and realm_id in (war.attacker, war.defender)
+        ]
+
+    def hostile(self, clan: Clan, other: Clan) -> bool:
+        """Whether the two clans belong to chiefdoms at war with each other."""
+        if not clan.realm or not other.realm or clan.realm == other.realm:
+            return False
+        return any(
+            {war.attacker, war.defender} == {clan.realm, other.realm}
+            for war in self.at_war(clan.realm)
+        )
+
+    def war_year(self, realm: Realm, seat: Clan) -> None:
+        """Once a year at the seat: fight the wars this chiefdom started, or start one."""
+        for war in self.at_war(realm.id):
+            if war.attacker == realm.id:
+                self.battle(war)
+        if realm.ended is None and not self.at_war(realm.id):
+            self.declare(realm, seat)
+
+    def declare(self, realm: Realm, seat: Clan) -> None:
+        world, p = self.world, self.p
+        mine = self.realm_clans(realm)
+        if len(mine) < 2:
+            return
+        own = self.strength(realm)
+        targets = []
+        for other_id in sorted(self.realms):
+            other = self.realms[other_id]
+            other_seat = self.clans.get(other.seat)
+            if other.ended is not None or other_id == realm.id or other_seat is None:
+                continue
+            if max(abs(other_seat.y - seat.y), abs(other_seat.x - seat.x)) > p.war_reach:
+                continue
+            if self.at_war(other_id):
+                continue
+            theirs = max(1, self.strength(other))
+            targets.append((-own * 100 // theirs, other_id))
+        if not targets:
+            return
+        target = self.realms[min(targets)[1]]
+        ratio = own * 100 // max(1, self.strength(target))
+        theirs_clans = {clan.id for clan in self.realm_clans(target)}
+        factors = []
+        factors.append(
+            ("same_people", 0.5) if target.people == realm.people else ("other_people", 2.0)
+        )
+        if ratio >= 150:
+            factors.append(("much_stronger", 2.0))
+        elif ratio < 100:
+            factors.append(("weaker", 0.3))
+        if seat.unmet and sum(seat.unmet) // len(seat.unmet) >= 15:
+            factors.append(("hungry", 2.0))
+        ruler = self.persons.get(realm.ruler)
+        if ruler is not None and ruler.traits[0] >= 60:
+            factors.append(("warlike_ruler", 1.5))
+        if any(set(clan.partners) & theirs_clans for clan in mine):
+            factors.append(("trade_partners", 0.3))
+        if not world.roll("war_declared", "realm", realm.id, p.war_chance_per_year, factors):
+            return
+        war = War(id=self.next_war, attacker=realm.id, defender=target.id, started=world.tick)
+        self.place_field(war)
+        self.next_war += 1
+        self.wars[war.id] = war
+        self.dirty_wars.add(war.id)
+        # Trade between the two sides ends.
+        for clan in mine:
+            for partner_id in sorted(set(clan.partners) & theirs_clans):
+                self.unlink(clan, partner_id)
+        world.count("wars.begun")
+        world.emit(
+            "war_begun",
+            data={
+                "realm": realm.name,
+                "realm_id": realm.id,
+                "enemy": target.name,
+                "enemy_id": target.id,
+                "war_id": war.id,
+            },
+        )
+
+    def place_field(self, war: War) -> None:
+        """The two sides meet halfway between their clans nearest each other."""
+        attacker, defender = self.realms[war.attacker], self.realms[war.defender]
+        a_seat, d_seat = self.clans.get(attacker.seat), self.clans.get(defender.seat)
+        if a_seat is None or d_seat is None:
+            return
+        a_front, d_front = self.front(attacker, d_seat), self.front(defender, a_seat)
+        y, x = (a_front.y + d_front.y) // 2, (a_front.x + d_front.x) // 2
+        if not self.campable[y, x]:
+            y, x = d_front.y, d_front.x  # across water: at the defender's door
+        war.field_y, war.field_x = y, x
+        self.dirty_wars.add(war.id)
+
+    def front(self, realm: Realm, enemy_seat: Clan) -> Clan:
+        """The clan of a chiefdom nearest the enemy's seat."""
+        return min(
+            self.realm_clans(realm),
+            key=lambda c: (max(abs(c.y - enemy_seat.y), abs(c.x - enemy_seat.x)), c.id),
+        )
+
+    def fall(self, clan: Clan, count: int) -> int:
+        """Fighters of a clan fall: men of fighting age, the weakest first."""
+        fighters = sorted(
+            (
+                person
+                for person in (self.persons[pid] for pid in clan.members)
+                if person.sex == 1 and 16 <= self.age(person) <= 45
+            ),
+            key=lambda person: (person.traits[0], person.id),
+        )[:count]
+        for person in fighters:
+            if person.clan in self.clans:
+                self.die(person, "war")
+        return len(fighters)
+
+    def end_war(self, war: War, outcome: str, winner: int = 0) -> None:
+        war.ended, war.outcome, war.winner = self.world.tick, outcome, winner
+        self.dirty_wars.add(war.id)
+        self.world.count(f"wars.{outcome}")
+
+    def battle(self, war: War) -> None:
+        world, p = self.world, self.p
+        attacker, defender = self.realms[war.attacker], self.realms[war.defender]
+        a_seat, d_seat = self.clans.get(attacker.seat), self.clans.get(defender.seat)
+        if attacker.ended is not None or defender.ended is not None or not a_seat or not d_seat:
+            self.end_war(war, "faded")
+            return
+        theirs = {clan.id for clan in self.realm_clans(defender)}
+        for clan in self.realm_clans(attacker):
+            for partner_id in sorted(set(clan.partners) & theirs):
+                self.unlink(clan, partner_id)  # who came under either side since
+        a_front, d_front = self.front(attacker, d_seat), self.front(defender, a_seat)
+        a_strength = self.strength(attacker)
+        d_strength = self.strength(defender) * p.war_defender_percent // 100
+        chance = a_strength / max(1, a_strength + d_strength)
+        won = world.roll("battle_won", "war", war.id, chance, [])
+        winner, loser = (attacker, defender) if won else (defender, attacker)
+        w_front, l_front = (a_front, d_front) if won else (d_front, a_front)
+        l_adults = sum(len(self.adults(c)) for c in self.realm_clans(loser))
+        w_adults = sum(len(self.adults(c)) for c in self.realm_clans(winner))
+        names = {"winner": winner.name, "winner_id": winner.id, "loser": loser.name}
+        names["loser_id"] = loser.id
+        fallen = self.fall(l_front, max(1, l_adults // p.war_fallen_per_adults))
+        fallen += self.fall(w_front, max(1, w_adults // (2 * p.war_fallen_per_adults)))
+        war.battles += 1
+        war.fallen += fallen
+        war.last_battle, war.last_fallen = world.tick, fallen
+        plunder = self.plunder(w_front, l_front) if l_front.id in self.clans else 0
+        if plunder:
+            names["plunder"] = plunder
+        self.dirty_wars.add(war.id)
+        world.count("wars.battles")
+        world.count("wars.fallen", fallen)
+        world.emit(
+            "battle_plunder" if plunder else "battle",
+            data={**names, "fallen": fallen, "war_id": war.id},
+        )
+        # The loser gives up the clan nearest the enemy, or all when only the seat is left.
+        loser_seat = self.clans.get(loser.seat)
+        winner_seat = self.clans[winner.seat]
+        # The seat is the last to fall: first every other clan, the nearest first.
+        outer = [c for c in self.realm_clans(loser) if loser_seat is None or c.id != loser_seat.id]
+        taken = (
+            min(
+                outer,
+                key=lambda c: (max(abs(c.y - winner_seat.y), abs(c.x - winner_seat.x)), c.id),
+            )
+            if outer
+            else loser_seat
+        )
+        room = p.realm_max_clans - len(self.realm_clans(winner))
+        if loser_seat is None or loser.ended is not None:
+            self.end_war(war, "conquest", winner.id)
+            return
+        if taken is not None and taken.id != loser_seat.id and room > 0:
+            taken.realm = winner.id
+            self.dirty_clans.add(taken.id)
+            world.count("wars.clans_taken")
+            world.emit(
+                "clan_conquered",
+                data={**names, "clan": taken.name, "clan_id": taken.id, "war_id": war.id},
+            )
+        elif taken is not None and taken.id == loser_seat.id:
+            self.conquer(war, winner, loser, winner_seat, names)
+            return
+        self.place_field(war)  # the front moves with what was won
+        if world.roll(
+            "peace",
+            "war",
+            war.id,
+            p.peace_chance_per_year,
+            [("long_war", 2.0)] if war.battles >= 5 else [],
+        ):
+            self.end_war(war, "peace")
+            world.emit("peace_made", data={**names, "battles": war.battles, "war_id": war.id})
+
+    def plunder(self, winner: Clan, loser: Clan) -> int:
+        """The winners carry off a share of the beaten clan's stores."""
+        share = self.p.war_plunder_percent
+        taken = 0
+        food = loser.food * share // 100
+        if food:
+            loser.food -= food
+            winner.food += food
+            self.flow(loser, "food", 3, food)
+            self.flow(winner, "food", 2, food)
+            taken += food
+        for good in sorted(loser.stores):
+            amount = loser.stores[good] * share // 100
+            if amount <= 0:
+                continue
+            loser.stores[good] -= amount
+            winner.stores[good] = winner.stores.get(good, 0) + amount
+            self.flow(loser, good, 3, amount)
+            self.flow(winner, good, 2, amount)
+            taken += amount
+        if taken:
+            self.dirty_clans.update((winner.id, loser.id))
+            self.world.count("wars.plundered", taken)
+        return taken
+
+    def conquer(
+        self, war: War, winner: Realm, loser: Realm, winner_seat: Clan, names: dict[str, Any]
+    ) -> None:
+        """The seat itself has fallen: the chiefdom is no more, its clans pass to the winner."""
+        room = self.p.realm_max_clans - len(self.realm_clans(winner))
+        clans = sorted(
+            self.realm_clans(loser),
+            key=lambda c: (max(abs(c.y - winner_seat.y), abs(c.x - winner_seat.x)), c.id),
+        )
+        for clan in clans:
+            clan.realm = winner.id if room > 0 else 0
+            room -= 1
+            self.dirty_clans.add(clan.id)
+        loser.ended = self.world.tick
+        self.dirty_realms.add(loser.id)
+        self.end_war(war, "conquest", winner.id)
+        self.world.count("realms.conquered")
+        self.world.emit("realm_conquered", data={**names, "war_id": war.id})
 
     def move_seat(self, realm: Realm) -> None:
         """The seat is gone: the largest settled clan of the realm takes over, or it falls."""
@@ -2234,6 +2547,15 @@ class Society:
         rows.append(
             (
                 tick,
+                "wars.ongoing",
+                "world",
+                0,
+                float(sum(1 for w in self.wars.values() if w.ended is None)),
+            )
+        )
+        rows.append(
+            (
+                tick,
                 "realms.clans",
                 "world",
                 0,
@@ -2283,6 +2605,7 @@ class Society:
         self.dirty_places.clear()
         self.dirty_cultures.clear()
         self.dirty_realms.clear()
+        self.dirty_wars.clear()
         self.new_discoveries.clear()
         self.forgotten.clear()
         self.new_links.clear()
@@ -2300,6 +2623,25 @@ class Society:
             "next_building": self.next_building,
             "next_culture": self.next_culture,
             "next_realm": self.next_realm,
+            "next_war": self.next_war,
+            "wars": [
+                {
+                    "id": w.id,
+                    "attacker": w.attacker,
+                    "defender": w.defender,
+                    "started": w.started,
+                    "ended": w.ended,
+                    "outcome": w.outcome,
+                    "battles": w.battles,
+                    "fallen": w.fallen,
+                    "winner": w.winner,
+                    "field_y": w.field_y,
+                    "field_x": w.field_x,
+                    "last_battle": w.last_battle,
+                    "last_fallen": w.last_fallen,
+                }
+                for w in (self.wars[wid] for wid in sorted(self.wars))
+            ],
             "realms": [
                 {
                     "id": r.id,
@@ -2396,6 +2738,8 @@ class Society:
                 famine=raw["famine"],
             )
         self.next_realm = state.get("next_realm", 1)
+        self.next_war = state.get("next_war", 1)
+        self.wars = {raw["id"]: War(**raw) for raw in state.get("wars", [])}
         self.realms = {raw["id"]: Realm(**raw) for raw in state.get("realms", [])}
         self.next_culture = state.get("next_culture", 1)
         self.cultures = {

@@ -50,3 +50,10 @@ The owner wants a life simulation: people who visibly do things. Decision: the m
 - Chiefdoms keep their clans inside their people (factor 0.2 on drifting apart). This is how large peoples arise, as the owner asked, instead of by raising `people_max_clans`.
 - Realms and peoples are shown one at a time on the map, so realms reuse the twelve fixed colours, stepping five places per id so that neighbours founded close in time differ.
 - Consolidation (owner's wish: many groups early, fewer and larger later, as in history) works through rule, not by lowering split chances: assimilation into the seat's people, daughter clans staying under the same rule, and weak chiefdoms submitting to larger ones at succession. Wars will add conquest.
+
+## 2026-11-13: war
+
+- Only chiefdoms make war; free clans are drawn in by joining, not by force. A war is one attacker against one defender, with one battle a year at the attacker's turn of the year.
+- Battle odds are the plain strength ratio, logged as one roll; the defender's own ground counts 120 percent. Fighting strength is data (`war_percent` on technologies).
+- Who falls is decided, not rolled: men of fighting age at the front, the weakest first. The number follows the size of each side.
+- The seat falls last. A lost battle costs the clan nearest the winner; only a chiefdom reduced to its seat is conquered whole.

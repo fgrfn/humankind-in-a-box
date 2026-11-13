@@ -198,3 +198,33 @@ realm_submitted:
   text:
     de: "Das Häuptlingstum {realm} unterwirft sich {to}. Seine {clans} Clans folgen nun dessen Herrscher."
     en: "The chiefdom of {realm} submits to {to}. Its {clans} clans now follow that ruler."
+war_begun:
+  importance: 5
+  text:
+    de: "{realm} zieht gegen {enemy} in den Krieg."
+    en: "{realm} goes to war against {enemy}."
+battle:
+  importance: 3
+  text:
+    de: "Schlacht zwischen {winner} und {loser}. {winner} siegt, {fallen} Krieger fallen."
+    en: "Battle between {winner} and {loser}. {winner} wins, {fallen} fighters fall."
+clan_conquered:
+  importance: 4
+  text:
+    de: "{winner} unterwirft die {clan}, die bisher {loser} folgten."
+    en: "{winner} subdues the {clan}, who used to follow {loser}."
+realm_conquered:
+  importance: 5
+  text:
+    de: "Der Sitz von {loser} fällt. {winner} hat das Häuptlingstum erobert."
+    en: "The seat of {loser} falls. {winner} has conquered the chiefdom."
+battle_plunder:
+  importance: 3
+  text:
+    de: "Schlacht zwischen {winner} und {loser}. {winner} siegt, {fallen} Krieger fallen. Die Sieger plündern {plunder} Einheiten aus den Lagern."
+    en: "Battle between {winner} and {loser}. {winner} wins, {fallen} fighters fall. The victors carry off {plunder} units from the stores."
+peace_made:
+  importance: 4
+  text:
+    de: "{winner} und {loser} schließen nach {battles} Schlachten Frieden."
+    en: "{winner} and {loser} make peace after {battles} battles."

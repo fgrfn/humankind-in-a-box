@@ -1,7 +1,7 @@
 import { Application, Assets, Container, Graphics, Sprite, type Spritesheet, Text } from "pixi.js";
 import { useEffect, useRef } from "react";
 import { peopleColour, realmColour } from "./colours";
-import type { Building, Group, Human, Land, Place, Realm, TradeLink, WorldMap } from "./api";
+import type { Building, Group, Human, Land, Place, Realm, TradeLink, War, WorldMap } from "./api";
 
 // One tile is 32 x 16 map units. The sprites are drawn at twice that size, so
 // the map is pixel-exact at zoom 2 and stays sharp when zoomed further in.
@@ -141,6 +141,7 @@ function figureFor(person: Human, band: Band): string {
   if (person.age < 16) return "child";
   if (person.age >= 55) return "elder";
   const kind = person.activity.split(":")[0];
+  if (kind === "fight") return "hunter"; // the figure with a spear
   if (kind === "fish") return "fisher";
   if (kind === "game" && band.spear) return "hunter";
   if (kind === "plants" && person.sex === "f") return "gatherer";
@@ -210,6 +211,20 @@ class Crowd {
     return tiles.reverse();
   }
 
+  // To war the way is longer than to work: straight towards the field, tile by
+  // tile, as far as dry land goes.
+  private march(band: Band, tx: number, ty: number): [number, number][] {
+    const tiles: [number, number][] = [[band.x, band.y]];
+    const steps = Math.max(Math.abs(tx - band.x), Math.abs(ty - band.y));
+    for (let n = 1; n <= steps; n++) {
+      const x = Math.round(band.x + ((tx - band.x) * n) / steps);
+      const y = Math.round(band.y + ((ty - band.y) * n) / steps);
+      if (!this.dry(x, y)) break;
+      tiles.push([x, y]);
+    }
+    return tiles;
+  }
+
   sync(layer: Container, sheet: Spritesheet, map: WorldMap, groups: Group[], people: Human[]): void {
     if (this.map !== map) {
       for (const walker of this.walkers.values()) walker.sprite.destroy();
@@ -239,6 +254,7 @@ class Crowd {
       alive.add(person.id);
       let walker = this.walkers.get(person.id);
       const texture = sheet.textures[figureFor(person, band)] ?? sheet.textures.man;
+      const tint = person.activity.startsWith("fight:") ? 0xff9a8a : 0xffffff;
       if (!walker) {
         const sprite = new Sprite(texture);
         sprite.anchor.set(0.5, 1);
@@ -249,11 +265,13 @@ class Crowd {
         sprite.on("pointertap", () => {
           if (!this.wasDragged()) this.onTap(id);
         });
+        sprite.tint = tint;
         layer.addChild(sprite);
         walker = { sprite, person, clan: person.clan, path: [[band.x, band.y]], leg: 0, along: 0, task: "rest", wait: Math.random() * 20, clock: Math.random() * 10, dx: (Math.random() - 0.5) * 12, dy: (Math.random() - 0.5) * 5 };
         this.walkers.set(person.id, walker);
       } else {
         if (walker.sprite.texture !== texture) walker.sprite.texture = texture;
+        walker.sprite.tint = tint;
         if (walker.clan !== person.clan || moved.has(person.clan)) {
           // A new camp, or a new clan: walk straight there from wherever one stands.
           const [fx, fy] = this.where(walker);
@@ -292,13 +310,20 @@ class Crowd {
       if (walker.task === "rest" || walker.task === "work") {
         walker.wait -= seconds;
         if (walker.task === "work") lift = Math.abs(Math.sin(walker.clock * 5)) * 1.2;
+        if (walker.task === "work" && walker.person.activity.startsWith("fight:")) {
+          // At the field: lunging back and forth.
+          lift = Math.abs(Math.sin(walker.clock * 11)) * 2;
+          walker.sprite.scale.x = Math.sin(walker.clock * 2.3 + walker.dx) > 0 ? FIGURE_SCALE : -FIGURE_SCALE;
+        }
         if (walker.wait <= 0) {
           if (walker.task === "work") {
             walker.path = [...walker.path].reverse();
             walker.task = "back";
           } else {
             const person = walker.person;
-            if (person.activity && person.x >= 0) {
+            if (person.activity.startsWith("fight:") && person.x >= 0) {
+              walker.path = this.march(band, person.x, person.y);
+            } else if (person.activity && person.x >= 0) {
               walker.path = this.route(band, person.x, person.y);
             } else if (band.near.length) {
               // Children and those without work stay around the camp.
@@ -369,6 +394,8 @@ interface Props {
   land: Land | null;
   landBy: "peoples" | "realms";
   realms: Realm[];
+  wars: War[];
+  year: number;
   links: TradeLink[];
   active: boolean;
   selected: number | null;
@@ -377,7 +404,7 @@ interface Props {
   onPerson: (id: number) => void;
 }
 
-export function MapView({ active, map, steps, groups, places, people, land, landBy, realms, links, selected, focus, onSelect, onPerson }: Props) {
+export function MapView({ active, map, steps, groups, places, people, land, landBy, realms, wars, year, links, selected, focus, onSelect, onPerson }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<Scene | null>(null);
   const ready = useRef<Promise<void> | null>(null);
@@ -744,9 +771,50 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         }
         g.stroke({ color: 0xf2efe6, width: 1.2, alpha: 0.9 });
       }
+      // War: a red line from each seat to the field where the two sides meet,
+      // crossed marks on the field, graves of the fallen that fade over ten
+      // years, and the winner's banner where a chiefdom was conquered.
+      const point = (x: number, y: number): [number, number] => {
+        const [px, top] = project(x, y);
+        return [px, top + TILE_H / 2];
+      };
+      for (const war of wars) {
+        const field = war.field;
+        if (!field) continue;
+        const [fx, fy] = point(field.x, field.y);
+        if (war.ended_year === null) {
+          for (const side of [war.attacker, war.defender]) {
+            if (side.x === null || side.y === null) continue;
+            const [sx, sy] = point(side.x, side.y);
+            g.moveTo(sx, sy).lineTo(fx, fy).stroke({ color: 0x10242d, width: 4.5, alpha: 0.6, cap: "round" });
+            g.moveTo(sx, sy).lineTo(fx, fy).stroke({ color: realmColour(side.id), width: 2, alpha: 0.95, cap: "round" });
+          }
+          g.moveTo(fx - 7, fy - 7).lineTo(fx + 7, fy + 7).moveTo(fx + 7, fy - 7).lineTo(fx - 7, fy + 7).stroke({ color: 0x10242d, width: 5.5, cap: "round" });
+          g.moveTo(fx - 7, fy - 7).lineTo(fx + 7, fy + 7).moveTo(fx + 7, fy - 7).lineTo(fx - 7, fy + 7).stroke({ color: 0xe8453c, width: 2.6, cap: "round" });
+        }
+        const since = war.last_battle_year === null ? Infinity : year - war.last_battle_year;
+        if (since <= 10 && war.last_fallen > 0) {
+          const fade = 1 - since / 11;
+          const count = Math.min(30, war.fallen);
+          for (let n = 0; n < count; n++) {
+            const ox = (tileNoise(war.id, n, 7) - 50) / 50;
+            const oy = (tileNoise(n, war.id, 8) - 50) / 50;
+            const gx = fx + ox * TILE_W * 1.1;
+            const gy = fy + oy * TILE_H * 1.1 + 4;
+            g.ellipse(gx, gy, 4.4, 2.2).fill({ color: 0x5b4632, alpha: 0.9 * fade });
+            g.moveTo(gx, gy - 1).lineTo(gx, gy - 8.5).moveTo(gx - 2.6, gy - 6).lineTo(gx + 2.6, gy - 6).stroke({ color: 0x10242d, width: 2.6, alpha: 0.7 * fade, cap: "round" });
+            g.moveTo(gx, gy - 1).lineTo(gx, gy - 8.5).moveTo(gx - 2.6, gy - 6).lineTo(gx + 2.6, gy - 6).stroke({ color: 0xf2efe6, width: 1.2, alpha: fade, cap: "round" });
+          }
+        }
+        if (war.outcome === "conquest" && war.winner_id !== null && war.ended_year !== null && year - war.ended_year <= 5) {
+          const fade = 1 - (year - war.ended_year) / 6;
+          g.moveTo(fx, fy + 2).lineTo(fx, fy - 18).stroke({ color: 0x3a2a1a, width: 1.4, alpha: fade });
+          g.poly([fx, fy - 18, fx + 11, fy - 14.5, fx, fy - 11]).fill({ color: realmColour(war.winner_id), alpha: fade }).stroke({ color: 0x10242d, width: 0.8, alpha: fade });
+        }
+      }
       current.routes.addChild(g);
     });
-  }, [links]);
+  }, [links, wars, year]);
 
   // Fields: the tiles where people work the soil this month.
   useEffect(() => {
