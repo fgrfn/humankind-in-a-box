@@ -754,15 +754,13 @@ def create_app(
             "WHERE world_id = ? AND id = ? AND ended IS NULL",
             (row["world_id"], row["realm"]),
         ).fetchone()
+        # A fever goes round until its tick; the world's clock is its newest tick.
+        now = conn.execute("SELECT tick FROM worlds WHERE id = ?", (row["world_id"],)).fetchone()[0]
         return {
             "id": row["id"],
             "name": row["name"],
             "people_id": row["culture"],
-            # A fever goes round: the world's clock is the newest tick in the stores.
-            "sick": row["sick_until"]
-            > (
-                conn.execute("SELECT tick FROM worlds WHERE id = ?", (row["world_id"],)).fetchone()[0]
-            ),
+            "sick": row["sick_until"] > now,
             "people": None if people is None else people["name"],
             "leader": None if leader is None else {"id": leader["id"], "name": leader["name"]},
             "realm": None
