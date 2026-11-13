@@ -154,7 +154,7 @@ const WALK_SPEED = 0.6; // tiles per second
 const FIGURE_SCALE = SPRITE_SCALE * 0.5;
 
 // Until a figure has its own picture, a close one stands in for it.
-const STAND_INS: Record<string, string> = { sick: "fallen", healer: "elder", shaman: "elder", herder: "elder" };
+const STAND_INS: Record<string, string> = { sick: "fallen", healer: "elder", shaman: "elder" };
 
 function figureFor(person: Human, band: Band): string {
   if (person.age < 16) return "child";
@@ -419,6 +419,7 @@ interface Scene {
   routes: Container;
   fields: Container;
   nature: Container;
+  wildlife: Container;
   buildings: Container;
   lodges: Container;
   people: Container;
@@ -498,6 +499,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         const routes = new Container();
         const names = new Container();
         const nature = new Container();
+        const wildlife = new Container();
         const buildings = new Container();
         const people = new Container();
         people.sortableChildren = true;
@@ -505,9 +507,9 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         // Camps' huts and tents stand with the buildings, below the people;
         // big names and the small name plates are drawn over everything.
         const lodges = new Container();
-        world.addChild(terrain, fields, paths, borders, routes, nature, buildings, lodges, people, names, camps);
+        world.addChild(terrain, fields, paths, borders, routes, nature, wildlife, buildings, lodges, people, names, camps);
         app.stage.addChild(world);
-        scene.current = { app, world, terrain, paths, borders, names, routes, fields, nature, buildings, lodges, people, camps, sheet, natureAt: new Map(), natureKind: new Map() };
+        scene.current = { app, world, terrain, paths, borders, names, routes, fields, nature, wildlife, buildings, lodges, people, camps, sheet, natureAt: new Map(), natureKind: new Map() };
         app.ticker.add((ticker) => {
           people.visible = world.scale.x >= 0.9; // too small to read from far away
           if (!people.visible) return;
@@ -976,6 +978,49 @@ export function MapView({ active, map, steps, groups, places, people, land, land
     });
   }, [map, stocks]);
 
+  // Wild animals: where game is plentiful, now and then one stands about, of a
+  // kind that fits the land. Fewer where people hunt; mammoths only in the
+  // early world.
+  useEffect(() => {
+    if (!map) return;
+    void ready.current?.then(() => {
+      const current = scene.current;
+      const textures = current?.sheet?.textures;
+      if (!current || !textures) return;
+      for (const child of current.wildlife.removeChildren()) child.destroy();
+      const game = stocks.game;
+      if (!game || game.length !== map.width * map.height) return;
+      const kinds: Record<string, string[]> = {
+        forest: ["deer", "deer", "boar", "boar", "wolf", "bear"],
+        taiga: ["deer", "wolf", "bear", "boar"],
+        tundra: year < 400 ? ["mammoth", "deer", "wolf"] : ["deer", "wolf"],
+        grassland: ["aurochs", "wild_horse", "deer", "aurochs"],
+        steppe: ["wild_horse", "wild_horse", "aurochs"],
+        marsh: ["geese", "geese", "boar"],
+      };
+      for (let index = 0; index < game.length; index++) {
+        if (map.river[index]) continue;
+        const x = index % map.width;
+        const y = (index - x) / map.width;
+        const biome = map.biomes[map.biome[index]];
+        const options = kinds[biome];
+        const capacity = map.capacity?.game?.[biome] ?? 0;
+        if (!options || capacity <= 0 || game[index] < capacity * 0.6) continue;
+        if (tileNoise(x, y, 31) >= 3) continue;
+        const kind = options[tileNoise(x, y, 32) % options.length];
+        const texture = textures[kind];
+        if (!texture) continue;
+        const [cx, cy] = project(x, y);
+        const sprite = new Sprite(texture);
+        sprite.anchor.set(0.5, 1);
+        sprite.position.set(cx + (tileNoise(x, y, 33) - 50) / 6, cy + TILE_H * 0.8);
+        const size = FIGURE_SCALE * (kind === "mammoth" ? 1.1 : kind === "geese" ? 0.5 : kind === "bear" || kind === "aurochs" ? 0.8 : 0.65);
+        sprite.scale.set(tileNoise(x, y, 34) < 50 ? size : -size, size);
+        current.wildlife.addChild(sprite);
+      }
+    });
+  }, [map, stocks, year]);
+
   // Fields: the tiles where people work the soil this month.
   useEffect(() => {
     if (!map) return;
@@ -1113,11 +1158,11 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         if (group.herd) {
           // The herd beside the camp: more kinds of animal as it grows, a pen
           // where people have settled. Shown once the animal pictures exist.
-          if (group.settled) extra("pen", -TILE_W * 0.7, TILE_H * 0.55, SPRITE_SCALE * 0.6);
-          extra("sheep", -TILE_W * 0.7, TILE_H * 0.5, SPRITE_SCALE * 0.5);
-          if (group.herd >= 20) extra("goats", -TILE_W * 0.45, TILE_H * 0.8, SPRITE_SCALE * 0.5, true);
-          if (group.herd >= 40) extra("cow", -TILE_W * 0.95, TILE_H * 0.75, SPRITE_SCALE * 0.5);
-          if (group.technologies.some((tech) => tech.id === "horse_riding")) extra("tame_horse", TILE_W * 0.95, TILE_H * 0.6, SPRITE_SCALE * 0.5, true);
+          if (group.settled) extra("pen", -TILE_W * 0.75, TILE_H * 0.6, FIGURE_SCALE * 0.9);
+          extra("sheep", -TILE_W * 0.75, TILE_H * 0.5, FIGURE_SCALE * 0.6);
+          if (group.herd >= 20) extra("goats", -TILE_W * 0.45, TILE_H * 0.85, FIGURE_SCALE * 0.6, true);
+          if (group.herd >= 40) extra("cow", -TILE_W * 1.05, TILE_H * 0.8, FIGURE_SCALE * 0.7);
+          if (group.technologies.some((tech) => tech.id === "horse_riding")) extra("tame_horse", TILE_W * 0.95, TILE_H * 0.65, FIGURE_SCALE * 0.75, true);
         }
         if (group.faith) {
           // Where a faith began stands a stone circle; settled believers keep a

@@ -245,7 +245,7 @@ def create_app(
             # map can show woods and bushes thinning out and growing back.
             "capacity": {
                 resource: dict(sorted(packs.resources[resource].capacity.items()))
-                for resource in ("wood", "plants")
+                for resource in ("wood", "plants", "game")
                 if resource in packs.resources
             },
             "deposits": [

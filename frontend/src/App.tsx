@@ -716,15 +716,15 @@ function ClanDetail({ detail, t, lang, onShow, onPerson, onClan }: { detail: Gro
               </button>
             </>
           ) : null}
-          {detail.leader && detail.realm ? ". " : ""}
           {detail.faith ? (
             <>
-              {detail.leader || detail.realm ? ". " : ""}
+              {detail.leader ? ". " : ""}
               <i className="chip" style={{ background: faithCss(detail.faith.id) }} aria-hidden="true" /> {t("believesIn")} {detail.faith.name}
             </>
           ) : null}
           {detail.realm ? (
             <>
+              {detail.leader || detail.faith ? ". " : ""}
               <i className="chip" style={{ background: realmCss(detail.realm.id) }} aria-hidden="true" /> {detail.realm.seat ? t("seatOf") : t("belongsTo")} {detail.realm.name}
             </>
           ) : null}
@@ -995,9 +995,9 @@ export function App() {
   useEffect(() => {
     if (worldId === null || stockYear === undefined) return;
     let cancelled = false;
-    void Promise.all([api.layer(worldId, "wood"), api.layer(worldId, "plants")])
-      .then(([wood, plants]) => {
-        if (!cancelled) setStocks({ wood: wood.values, plants: plants.values });
+    void Promise.all([api.layer(worldId, "wood"), api.layer(worldId, "plants"), api.layer(worldId, "game")])
+      .then(([wood, plants, game]) => {
+        if (!cancelled) setStocks({ wood: wood.values, plants: plants.values, game: game.values });
       })
       .catch(() => undefined);
     return () => {
