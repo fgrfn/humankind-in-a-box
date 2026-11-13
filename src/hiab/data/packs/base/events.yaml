@@ -89,7 +89,7 @@ knowledge_shared:
     de: "Die {clan} lernen von den {teacher}: {tech}."
     en: "The {clan} learn from the {teacher}: {tech}."
 knowledge_lost:
-  importance: 3
+  importance: 2
   text:
     de: "Die {clan} verlernen: {tech}."
     en: "The {clan} forget: {tech}."
@@ -228,3 +228,8 @@ peace_made:
   text:
     de: "{winner} und {loser} schließen nach {battles} Schlachten Frieden."
     en: "{winner} and {loser} make peace after {battles} battles."
+knowledge_vanished:
+  importance: 4
+  text:
+    de: "Mit den {clan} vergisst die Welt {tech}. Niemand kennt es mehr."
+    en: "With the {clan}, the world forgets {tech}. Nobody knows it any more."
