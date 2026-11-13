@@ -46,6 +46,13 @@ RULERS = EARLY_FARMERS + (
     "life.realm_max_clans: 4\n"
     "life.realm_break_on_succession: 0.5\n"
 )
+FEVERISH = (
+    "life.disease_chance_per_year: 0.2\n"
+    "life.disease_spread_chance: 0.8\n"
+    "life.disease_immunity_years: 10\n"
+    "life.start_peoples: 3\n"
+    "life.start_families: 6\n"
+)
 WARRIORS = RULERS + "life.war_chance_per_year: 0.5\nlife.war_reach: 60\n"
 
 
@@ -159,7 +166,7 @@ def test_peoples_form_split_and_name_their_places(tmp_path: Path, settings: Sett
 
 
 @pytest.mark.parametrize(
-    "overrides", [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS, RULERS, WARRIORS]
+    "overrides", [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS, RULERS, WARRIORS, FEVERISH]
 )
 def test_such_worlds_resume_identically(tmp_path: Path, settings: Settings, overrides: str) -> None:
     prepared = world_with(settings, overrides)
@@ -355,3 +362,20 @@ def test_chiefdoms_go_to_war_and_conquer(tmp_path: Path, settings: Settings) -> 
     fallen = conn.execute("SELECT COUNT(*) FROM persons WHERE cause = 'war'").fetchone()[0]
     assert fallen == sum(war.fallen for war in society.wars.values())
     assert conn.execute("SELECT COUNT(*) FROM wars").fetchone()[0] == len(society.wars)
+
+
+def test_fevers_break_out_spread_and_pass(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, FEVERISH), 80, 4)
+    society = world.society
+    assert society is not None
+    conn = sqlite3.connect(path)
+    kinds = {row[0] for row in conn.execute("SELECT DISTINCT type FROM events")}
+    assert {"epidemic_began", "epidemic_ended"} <= kinds
+    dead = conn.execute("SELECT COUNT(*) FROM persons WHERE cause = 'disease'").fetchone()[0]
+    assert dead > 0, "a fever that kills nobody in 80 years of fevers"
+    for clan in society.clans.values():
+        # Nobody is sick and spared at the same time.
+        assert not (clan.sick_until > world.tick and clan.immune_until > world.tick)
+        if clan.sick_until <= world.tick:
+            assert not any(society.persons[pid].activity == "sick" for pid in clan.members)

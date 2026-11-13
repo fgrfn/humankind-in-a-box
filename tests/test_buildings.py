@@ -17,6 +17,9 @@ EARLY_HUTS = (
     "technologies.fire.base_chance_per_year: 0.02\n"
     "technologies.shelter.base_chance_per_year: 0.02\n"
     "technologies.shelter.requires: []\n"
+    # Enough people from the start that some settle within the test's years.
+    "life.start_peoples: 3\n"
+    "life.start_families: 6\n"
 )
 
 

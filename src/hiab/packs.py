@@ -150,6 +150,17 @@ class LifeParams(_Model):
     # Now and then someone grows up who changes things: a born leader, an
     # inventor, a great warrior, a healer. Rolled once when a person comes of age.
     gifted_chance: float = Field(0.004, ge=0.0, le=1.0)
+    # Sickness. Now and then a fever breaks out in a clan: more often where many
+    # live close together, are settled, hungry or at war. It lasts some months,
+    # makes everyone likelier to die, and passes to neighbours, trade partners
+    # and the clans of the same chiefdom. Who lived through it is spared for a
+    # generation. Healers and herbal knowledge soften it.
+    disease_chance_per_year: float = Field(0.006, ge=0.0, le=1.0)
+    disease_months: int = Field(8, ge=1, le=120)
+    disease_death_factor: float = Field(15.0, ge=1.0, le=50.0)
+    disease_spread_chance: float = Field(0.25, ge=0.0, le=1.0)
+    disease_immunity_years: int = Field(25, ge=0, le=1000)
+    disease_sick_percent: int = Field(25, ge=0, le=100)
     adult_age: int = Field(ge=10, le=30)
     elder_age: int = Field(ge=30, le=90)
     max_fertile_age: int = Field(ge=20, le=60)

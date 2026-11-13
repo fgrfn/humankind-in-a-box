@@ -758,6 +758,11 @@ def create_app(
             "id": row["id"],
             "name": row["name"],
             "people_id": row["culture"],
+            # A fever goes round: the world's clock is the newest tick in the stores.
+            "sick": row["sick_until"]
+            > (
+                conn.execute("SELECT tick FROM worlds WHERE id = ?", (row["world_id"],)).fetchone()[0]
+            ),
             "people": None if people is None else people["name"],
             "leader": None if leader is None else {"id": leader["id"], "name": leader["name"]},
             "realm": None
@@ -869,6 +874,10 @@ def create_app(
             return f"baut: {name}" if language == "de" else f"building: {name}"
         if kind == "search":
             return "sucht Nahrung" if language == "de" else "searching for food"
+        if kind == "sick":
+            return "liegt krank" if language == "de" else "lies sick"
+        if kind == "heal":
+            return "pflegt die Kranken" if language == "de" else "tends the sick"
         if kind == "fight":
             return "zieht in den Krieg" if language == "de" else "off to war"
         resource = packs.resources.get(kind)
