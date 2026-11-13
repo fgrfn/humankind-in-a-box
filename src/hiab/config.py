@@ -16,6 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 SECRET_FIELDS = frozenset({"api_token", "llm_key"})
 
 # Environment variable -> settings field. Anything not listed here is HIAB_<FIELD>.
+# HIAB_ variables that are not settings: read elsewhere, never rejected.
+NOT_SETTINGS = {"HIAB_COMMIT"}  # the commit an image was built from, see hiab.build_commit
 ENV_ALIASES = {"HIAB_DATA": "data_dir", "HIAB_PACE": "pace"}
 
 
@@ -88,7 +90,7 @@ def default_data_dir() -> Path:
 def _env_layer(environ: dict[str, str]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key in sorted(environ):
-        if not key.startswith("HIAB_"):
+        if not key.startswith("HIAB_") or key in NOT_SETTINGS:
             continue
         field = ENV_ALIASES.get(key, key[5:].lower())
         if field not in Settings.model_fields:

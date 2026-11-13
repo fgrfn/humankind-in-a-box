@@ -37,3 +37,9 @@ def test_secrets_are_masked(tmp_path: Path) -> None:
     assert public["api_token"] == "***"
     assert public["llm_key"] == "***"
     assert "s3cret" not in str(public)
+
+
+def test_build_commit_variable_is_not_a_setting() -> None:
+    from hiab.config import _env_layer
+
+    assert _env_layer({"HIAB_COMMIT": "abc1234", "HIAB_PACE": "60"}) == {"pace": "60"}
