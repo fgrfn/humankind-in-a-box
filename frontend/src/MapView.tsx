@@ -1,8 +1,40 @@
-import { Application, Assets, Container, Graphics, Sprite, type Spritesheet, Text } from "pixi.js";
+import { Application, Assets, Container, Graphics, Sprite, type Spritesheet, Text, Texture } from "pixi.js";
 
 // Day and night: one turn of the sun takes this many real seconds. Only for
 // show; the simulation counts days of its own.
 const DAY_SECONDS = 240;
+
+// A soft round light: bright and warm in the middle, fading smoothly to nothing.
+let glowTexture: Texture | null = null;
+function glow(): Texture {
+  if (glowTexture) return glowTexture;
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const context = canvas.getContext("2d")!;
+  const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, "rgba(255, 226, 160, 0.95)");
+  gradient.addColorStop(0.18, "rgba(255, 184, 96, 0.7)");
+  gradient.addColorStop(0.45, "rgba(255, 128, 48, 0.28)");
+  gradient.addColorStop(0.75, "rgba(220, 90, 30, 0.08)");
+  gradient.addColorStop(1, "rgba(200, 70, 20, 0)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+  glowTexture = Texture.from(canvas);
+  return glowTexture;
+}
+
+// A light lying on the ground: flattened like the tiles, with its own flicker.
+function lightAt(x: number, y: number, radius: number, strength: number): Sprite {
+  const sprite = new Sprite(glow());
+  sprite.anchor.set(0.5);
+  sprite.position.set(x, y);
+  sprite.scale.set((radius * 2) / 128, (radius * 1.2) / 128);
+  sprite.alpha = strength;
+  (sprite as Sprite & { base?: number; phase?: number }).base = strength;
+  (sprite as Sprite & { base?: number; phase?: number }).phase = (x * 13 + y * 7) % 100;
+  return sprite;
+}
 
 // How dark it is now, 0 by day to 1 at midnight, with dawn and dusk between.
 function nightLevel(seconds: number): number {
@@ -507,6 +539,8 @@ interface Scene {
   lodges: Container;
   night: Graphics;
   lights: Container;
+  hearths: Container;
+  windows: Container;
   people: Container;
   camps: Container;
   sheet: Spritesheet | null;
@@ -595,20 +629,33 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         // Night falls over the land and the people; lights burn at the camps;
         // names stay readable above it.
         const night = new Graphics();
-        night.rect(-100000, -100000, 200000, 200000).fill(0x0a1633);
+        night.rect(-100000, -100000, 200000, 200000).fill(0x0b1430);
         night.alpha = 0;
         const lights = new Container();
         lights.blendMode = "add";
         lights.alpha = 0;
+        const hearths = new Container();
+        const windows = new Container();
+        lights.addChild(windows, hearths);
         world.addChild(terrain, fields, paths, borders, routes, nature, wildlife, buildings, lodges, people, night, lights, names, camps);
         app.stage.addChild(world);
-        scene.current = { app, world, terrain, paths, borders, names, routes, fields, nature, wildlife, buildings, lodges, people, camps, night, lights, sheet, natureAt: new Map(), natureKind: new Map() };
+        scene.current = { app, world, terrain, paths, borders, names, routes, fields, nature, wildlife, buildings, lodges, people, camps, night, lights, hearths, windows, sheet, natureAt: new Map(), natureKind: new Map() };
         const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
         app.ticker.add(() => {
           const dark = still ? 0 : nightLevel(performance.now() / 1000);
-          night.alpha = dark * 0.55;
+          night.alpha = dark * 0.6;
           lights.alpha = dark;
+          lights.visible = dark > 0.01;
           crowd.current.night = dark;
+          if (lights.visible) {
+            // Fires flicker, each to its own rhythm.
+            const t = performance.now() / 1000;
+            for (const child of hearths.children) {
+              const light = child as Sprite & { base?: number; phase?: number };
+              const phase = light.phase ?? 0;
+              light.alpha = (light.base ?? 1) * (0.82 + 0.1 * Math.sin(t * 6.3 + phase) + 0.08 * Math.sin(t * 2.7 + phase * 1.7));
+            }
+          }
         });
         app.ticker.add((ticker) => {
           people.visible = world.scale.x >= 0.9; // too small to read from far away
@@ -1182,6 +1229,16 @@ export function MapView({ active, map, steps, groups, places, people, land, land
       const current = scene.current;
       if (!current) return;
       for (const child of current.buildings.removeChildren()) child.destroy();
+      for (const child of current.windows.removeChildren()) child.destroy();
+      for (const place of places) {
+        if (place.abandoned_year !== null) continue; // nobody lights a fire in an empty village
+        for (const building of place.buildings) {
+          if (building.state !== "standing" || !["hut", "longhouse", "fire_place", "kiln"].includes(building.type)) continue;
+          // A small warm glow from the door of each lived-in house.
+          const [bx, by] = project(building.x, building.y);
+          current.windows.addChild(lightAt(bx, by + TILE_H * 0.8, building.type === "kiln" ? 9 : 7, 0.55));
+        }
+      }
       const all: Building[] = places.flatMap((place) => place.buildings);
       const textures = current.sheet?.textures ?? {};
       const g = new Graphics();
@@ -1213,17 +1270,11 @@ export function MapView({ active, map, steps, groups, places, people, land, land
       const layer = current.camps as Container & { wasDragged?: () => boolean };
       for (const child of layer.removeChildren()) child.destroy({ children: true });
       for (const child of current.lodges.removeChildren()) child.destroy({ children: true });
-      for (const child of current.lights.removeChildren()) child.destroy();
+      for (const child of current.hearths.removeChildren()) child.destroy();
       for (const group of groups) {
-        // The warm light of the hearths, larger where many live.
+        // The fire at the middle of each camp lights the ground around it.
         const [lx, ly] = project(group.x, group.y);
-        const glow = new Graphics();
-        const size = Math.min(34, 12 + Math.sqrt(group.population) * 2);
-        glow.circle(0, 0, size).fill({ color: 0xff9a3c, alpha: 0.18 });
-        glow.circle(0, 0, size * 0.55).fill({ color: 0xffb860, alpha: 0.28 });
-        glow.circle(0, 0, size * 0.22).fill({ color: 0xffd9a0, alpha: 0.45 });
-        glow.position.set(lx, ly + TILE_H / 2);
-        current.lights.addChild(glow);
+        current.hearths.addChild(lightAt(lx, ly + TILE_H * 0.85, Math.min(26, 10 + Math.sqrt(group.population) * 1.3), 0.9));
       }
       const before = campsAt.current;
       const now = new Map<number, [number, number]>();
