@@ -506,3 +506,26 @@ def world_metric(path: Path, key: str) -> float:
     value = conn.execute(sql, (key,)).fetchone()[0]
     conn.close()
     return float(value)
+
+
+def test_a_settled_village_never_moves(tmp_path: Path, settings: Settings) -> None:
+    """Once built, a place is a fixed point: its people do not move it or leave it."""
+    path = tmp_path / "w.sqlite"
+    prepared = world_with(settings, RULERS)
+    world = simulate(path, prepared, 120, 3)
+    society = world.society
+    assert society is not None
+    before = {c.id: (c.y, c.x, c.place) for c in society.clans.values() if c.settled}
+    assert before, "no settled clans to watch"
+    later = simulate(path, prepared, 60, 3).society
+    assert later is not None
+    for clan_id, spot in sorted(before.items()):
+        clan = later.clans.get(clan_id)
+        if clan is None:
+            continue  # died out: its place stays behind as it was
+        assert clan.settled, f"clan {clan_id} gave up its village"
+        assert (clan.y, clan.x, clan.place) == spot, f"clan {clan_id} moved its village"
+    for clan in later.clans.values():
+        if clan.settled:
+            place = later.places[clan.place]
+            assert (place["y"], place["x"]) == (clan.y, clan.x)
