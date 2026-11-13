@@ -151,6 +151,7 @@ function Numbers({ stats, series, discoveries, peoples, realms, wars, faiths, wo
     [t("warsNow"), formatNumber(stats.wars_ongoing ?? 0, lang)],
     [t("partnerships"), formatNumber(stats.trade_partnerships, lang)],
     [t("clans"), formatNumber(stats.clans, lang)],
+    [t("animals"), formatNumber(stats.herds ?? 0, lang)],
     [t("settlements"), formatNumber(stats.settlements, lang)],
     [t("discoveries"), `${stats.discoveries} / ${stats.discoveries_possible}`],
     [t("migrations"), formatNumber(stats.migrations_total, lang)],
@@ -647,7 +648,7 @@ function PersonCard({ person, t, onPerson, onTree }: { person: PersonDetail; t: 
       {person.gift ? <p className="gift">{t(`gift_${person.gift}` as TextKey)}</p> : null}
       <p className="lede">
         {person.clan_name ? `${person.clan_name}, ` : ""}
-        {person.died_year === null ? `${t("age")} ${person.age}` : `${t("died")} ${t("year")} ${person.died_year}, ${t("age")} ${person.age}${person.cause === "war" ? `, ${t("fellInWar")}` : person.cause === "hunger" ? `, ${t("diedOfHunger")}` : ""}`}
+        {person.died_year === null ? `${t("age")} ${person.age}` : `${t("died")} ${t("year")} ${person.died_year}, ${t("age")} ${person.age}${person.cause === "war" ? `, ${t("fellInWar")}` : person.cause === "raid" ? `, ${t("fellInRaid")}` : person.cause === "hunger" ? `, ${t("diedOfHunger")}` : ""}`}
       </p>
       <dl>
         {person.died_year === null ? (
@@ -703,7 +704,7 @@ function ClanDetail({ detail, t, lang, onShow, onPerson, onClan }: { detail: Gro
       <h2>{detail.name}</h2>
       <p className="lede">
         {detail.people ? `${t("ofThePeople")} ${detail.people}, ` : ""}
-        {detail.population} {t("people")}, {detail.settled ? `${t("settled")}${detail.place ? ` (${detail.place})` : ""}` : t("wandering")}, {t("founded")} {detail.founded_year}
+        {detail.population} {t("people")}, {detail.herd ? `${formatNumber(detail.herd, lang)} ${t("animals")}, ` : ""}{detail.settled ? `${t("settled")}${detail.place ? ` (${detail.place})` : ""}` : t("wandering")}, {t("founded")} {detail.founded_year}
       </p>
       {detail.leader || detail.realm || detail.faith ? (
         <p className="lede">

@@ -20,6 +20,7 @@ export interface Stats extends Calendar {
   trade_partnerships: number;
   realms?: number;
   lands?: number;
+  herds?: number;
   free_clans?: number;
   wars_ongoing?: number;
   faiths?: number;
@@ -98,6 +99,7 @@ export interface Group {
   sick?: boolean;
   faith?: { id: number; name: string } | null;
   realm?: { id: number; name: string; seat: boolean; land?: boolean } | null;
+  herd?: number;
   stores: Store[];
   members?: { id: number; name: string; sex: "f" | "m"; age: number; children: number; activity: string; activity_text: string }[];
 }

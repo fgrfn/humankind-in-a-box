@@ -117,6 +117,8 @@ class TechEffects(_Model):
     group_adults: int = Field(0, ge=0, le=100000)  # more adults a group can hold together
     war_percent: int = Field(0, ge=0, le=1000)  # added to the fighting strength of a clan
     labour_percent: int = Field(0, ge=0, le=1000)  # more food one worker brings in
+    keeps_herds: bool = False  # the clan can keep tame animals that graze and give food
+    raid_percent: int = Field(0, ge=0, le=1000)  # added to the chance of going raiding
 
 
 class Technology(_Model):
@@ -180,6 +182,25 @@ class LifeParams(_Model):
             "animals": Text(de="die Tiere", en="the animals"),
         }
     )
+    # Herds. Who has learned to keep animals starts with a few head. They graze
+    # the stock named by `herd_grazes` around the camp, give food each month and
+    # grow each year where the grass is enough; without enough grass some die.
+    # In a hungry month some are slaughtered. Herders look after them. Clans
+    # with herds follow the grass and settle less readily: pastoral peoples.
+    herd_grazes: str = "pasture"
+    herd_start: int = Field(6, ge=0, le=100000)
+    herd_food_per_head_month: int = Field(6, ge=0, le=10000)
+    herd_meat_per_head: int = Field(60, ge=0, le=100000)
+    herd_graze_per_head_month: int = Field(20, ge=1, le=100000)
+    herd_growth_percent_per_year: int = Field(20, ge=0, le=1000)
+    herd_heads_per_herder: int = Field(25, ge=1, le=100000)
+    herd_slaughter_percent_per_month: int = Field(8, ge=0, le=100)  # at most, when hungry
+    herders_settle_factor: float = Field(0.3, ge=0.0, le=100.0)
+    # Raids. Herders and warlike peoples ride out against settled neighbours of
+    # another people to carry off food and animals. The raided fight back.
+    raid_chance_per_year: float = Field(0.02, ge=0.0, le=1.0)
+    raid_reach: int = Field(10, ge=1, le=200)
+    raid_take_percent: int = Field(30, ge=0, le=100)
     adult_age: int = Field(ge=10, le=30)
     elder_age: int = Field(ge=30, le=90)
     max_fertile_age: int = Field(ge=20, le=60)
@@ -441,6 +462,8 @@ def _cross_check(pack: PackSet) -> list[str]:
             problems.append(
                 f"{where}: needs either 'houses' or 'per_people' to say how many are wanted"
             )
+    if pack.life is not None and pack.life.herd_grazes not in stocks:
+        problems.append(f"life.herd_grazes: '{pack.life.herd_grazes}' is not a stock resource")
     if pack.life is not None and not pack.foods():
         problems.append("life: people need at least one stock resource with food_value > 0")
     return problems

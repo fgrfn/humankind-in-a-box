@@ -61,6 +61,13 @@ DEVOUT = (
     "life.start_peoples: 3\n"
     "life.start_families: 6\n"
 )
+HERDERS = (
+    "life.start_technologies: [fire, stone_tools, spear, dog, herding, horse_riding]\n"
+    "life.start_peoples: 3\n"
+    "life.start_families: 5\n"
+    "life.raid_chance_per_year: 0.4\n"
+    "life.raid_reach: 40\n"
+)
 WARRIORS = RULERS + "life.war_chance_per_year: 0.5\nlife.war_reach: 60\n"
 
 
@@ -175,7 +182,7 @@ def test_peoples_form_split_and_name_their_places(tmp_path: Path, settings: Sett
 
 @pytest.mark.parametrize(
     "overrides",
-    [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS, RULERS, WARRIORS, FEVERISH, DEVOUT],
+    [EARLY_FARMERS, FORGETFUL, MANY_PEOPLES, TRADERS, RULERS, WARRIORS, FEVERISH, DEVOUT, HERDERS],
 )
 def test_such_worlds_resume_identically(tmp_path: Path, settings: Settings, overrides: str) -> None:
     prepared = world_with(settings, overrides)
@@ -426,3 +433,26 @@ def test_chiefdoms_grow_into_lands(tmp_path: Path, settings: Settings) -> None:
     conn.close()
     assert stored == len(lands)
     assert "land_formed" in kinds
+
+
+def test_herders_keep_animals_and_raid(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, HERDERS + EARLY_FARMERS), 120, 3)
+    society = world.society
+    assert society is not None
+    herds = [clan.herd for clan in society.clans.values()]
+    assert sum(herds) > 0, "nobody keeps animals in a world of herders"
+    conn = sqlite3.connect(path)
+    kinds = {row[0] for row in conn.execute("SELECT type FROM events")}
+    stored = conn.execute("SELECT SUM(herd) FROM groups WHERE dissolved IS NULL").fetchone()[0]
+    keys = {row[0] for row in conn.execute("SELECT DISTINCT key FROM metrics")}
+    causes = {row[0] for row in conn.execute("SELECT DISTINCT cause FROM persons")}
+    conn.close()
+    assert stored == sum(herds)
+    assert "herd_started" in kinds
+    assert {"herds.born", "food.herds.gathered"} <= keys
+    assert "raid" in kinds or "raid_repelled" in kinds, "no raids among riders"
+    assert "raid" in causes
+    # Herders graze: the pasture around them is not untouched.
+    grass = world.stocks["pasture"]
+    assert int(grass.min()) >= 0

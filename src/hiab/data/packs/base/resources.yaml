@@ -26,6 +26,14 @@ fish:
   capacity: {coast: 800, river: 700, marsh: 350, ocean: 300}
   regrowth_percent_per_month: 10
   season_percent: {spring: 130, summer: 120, autumn: 90, winter: 50}
+pasture:
+  kind: stock
+  name: {de: Weide, en: Pasture}
+  # Grass for grazing animals. People cannot eat it; their herds can.
+  work: {de: hütet das Vieh, en: herding the animals}
+  capacity: {steppe: 800, grassland: 900, tundra: 300, marsh: 400, forest: 150, taiga: 150, mountain: 250, desert: 60}
+  regrowth_percent_per_month: 15
+  season_percent: {spring: 150, summer: 120, autumn: 80, winter: 20}
 wood:
   kind: stock
   work: {de: holt Holz, en: fetching wood}

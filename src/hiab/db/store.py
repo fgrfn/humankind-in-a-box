@@ -292,6 +292,9 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE realms ADD COLUMN land_since INTEGER;
     """,
+    """
+    ALTER TABLE groups ADD COLUMN herd INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -559,6 +562,7 @@ class Store:
                     clan.realm,
                     clan.sick_until,
                     clan.faith,
+                    clan.herd,
                 )
             )
         self.conn.executemany(
@@ -589,7 +593,7 @@ class Store:
             ],
         )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
+            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
         )
         self.conn.executemany(
             "INSERT OR REPLACE INTO faiths VALUES (?,?,?,?,?,?,?,?)",

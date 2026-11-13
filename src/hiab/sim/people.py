@@ -90,6 +90,7 @@ class Clan:
     sick_until: int = 0  # a fever goes round until this tick
     immune_until: int = 0  # who lived through one is spared until this tick
     sick_dead: int = 0  # who died of the current fever
+    herd: int = 0  # head of tame animals
 
 
 @dataclass(slots=True)
@@ -655,6 +656,7 @@ class Society:
 
         clan.food += gathered
         self.flow(clan, "food", 0, gathered)
+        self.tend_herd(clan, need)
         if clan.food < need:
             # Trading partners with more than they need this month help out.
             helpers = sorted(set(clan.partners) | set(self.realm_members(clan)))
@@ -688,6 +690,93 @@ class Society:
             world.emit("famine", data={"clan": clan.name, "clan_id": clan.id})
         clan.famine = starving
 
+    # ---- herds -----------------------------------------------------------
+
+    def keeps_herds(self, clan: Clan) -> bool:
+        packs = self.world.packs
+        return any(
+            packs.technologies[t].effects.keeps_herds
+            for t in sorted(clan.techs)
+            if t in packs.technologies
+        )
+
+    def pasture(self, clan: Clan) -> tuple[tuple[slice, slice], int]:
+        """The grazing land around the camp and how much grass it holds."""
+        area = self.window(clan.y, clan.x, self.radius(clan) + 1)
+        grass = self.world.stocks[self.p.herd_grazes][area]
+        return area, int(grass.astype(np.int64).sum())
+
+    def herders(self, clan: Clan, adults: list[Person]) -> list[Person]:
+        """One adult in so many head goes out with the animals to the best grass."""
+        if clan.herd <= 0 or len(adults) < 2:
+            return adults
+        count = min(len(adults) // 2, -(-clan.herd // self.p.herd_heads_per_herder))
+        area, _grass = self.pasture(clan)
+        grass = self.world.stocks[self.p.herd_grazes][area]
+        flat = int(np.argmax(grass))  # first maximum: lowest y, then lowest x
+        y, x = divmod(flat, grass.shape[1])
+        y, x = y + area[0].start, x + area[1].start
+        chosen = sorted(adults, key=lambda person: (-person.traits[0], person.id))[:count]
+        self.set_work(chosen, self.p.herd_grazes, y, x)
+        self.walk(clan.y, clan.x, y, x, len(chosen))
+        taken = {person.id for person in chosen}
+        return [person for person in adults if person.id not in taken]
+
+    def tend_herd(self, clan: Clan, need: int) -> None:
+        """The animals graze, give food, starve where grass is short, and are
+        slaughtered when the people go hungry."""
+        world, p = self.world, self.p
+        if clan.herd <= 0:
+            return
+        if not self.keeps_herds(clan):
+            # Nobody left who knows how to keep them: the animals run off.
+            world.count("herds.scattered", clan.herd)
+            clan.herd = 0
+            self.dirty_clans.add(clan.id)
+            return
+        area, grass = self.pasture(clan)
+        want = clan.herd * p.herd_graze_per_head_month
+        eaten = min(want, grass)
+        if eaten > 0:
+            stock = world.stocks[p.herd_grazes][area].astype(np.int64)
+            world.stocks[p.herd_grazes][area] = (stock - stock * eaten // grass).astype(np.int32)
+        fed = eaten * 100 // want
+        food = clan.herd * p.herd_food_per_head_month * fed // 100
+        if food:
+            clan.food += food
+            self.flow(clan, "food", 0, food)
+            world.count("food.herds.gathered", food)
+        if fed < 50:
+            # Not enough grass: the weakest animals die.
+            lost = max(1, clan.herd * (50 - fed) // 500)
+            clan.herd = max(0, clan.herd - lost)
+            world.count("herds.starved", lost)
+        if clan.food < need and p.herd_meat_per_head > 0:
+            # Only so many a month, and never the breeding stock.
+            spare = clan.herd * p.herd_slaughter_percent_per_month // 100
+            killed = min(spare, -(-(need - clan.food) // p.herd_meat_per_head))
+            if killed > 0:
+                clan.herd -= killed
+                meat = killed * p.herd_meat_per_head
+                clan.food += meat
+                self.flow(clan, "food", 0, meat)
+                world.count("herds.slaughtered", killed)
+        self.dirty_clans.add(clan.id)
+
+    def herd_year(self, clan: Clan) -> None:
+        """Young ones each year, as many as the grass around allows."""
+        world, p = self.world, self.p
+        if not self.keeps_herds(clan) or clan.herd <= 0:
+            return
+        _area, grass = self.pasture(clan)
+        room = grass // (p.herd_graze_per_head_month * 3)  # what the grass would carry
+        if clan.herd >= room:
+            return
+        born = max(1, clan.herd * p.herd_growth_percent_per_year // 100)
+        clan.herd = min(room, clan.herd + born)
+        self.dirty_clans.add(clan.id)
+        world.count("herds.born", born)
+
     def crews(self, clan: Clan) -> tuple[list[Person], list[Person]]:
         """Who builds and who goes out for food this month.
 
@@ -710,6 +799,7 @@ class Society:
         adults = self.nurse(clan, adults)
         adults = self.rites(clan, adults)
         adults = self.muster(clan, adults)
+        adults = self.herders(clan, adults)
         adults = self.fetch_goods(clan, adults)
         if site is None or hungry or len(adults) < 2:
             return [], adults
@@ -1432,6 +1522,12 @@ class Society:
         clan.techs[tech_id] = self.world.tick
         self._effects.pop(clan.id, None)
         self.dirty_clans.add(clan.id)
+        tech = self.world.packs.technologies.get(tech_id)
+        if tech is not None and tech.effects.keeps_herds and clan.herd <= 0:
+            # Who learns to keep animals catches or gets a few to begin with.
+            clan.herd = self.p.herd_start
+            self.world.count("herds.started")
+            self.world.emit("herd_started", data={"clan": clan.name, "clan_id": clan.id})
         self.new_discoveries.append((clan.id, tech_id, self.world.tick, discoverer, how))
 
     # ---- leaders and chiefdoms -------------------------------------------
@@ -1929,7 +2025,7 @@ class Society:
             key=lambda c: (max(abs(c.y - enemy_seat.y), abs(c.x - enemy_seat.x)), c.id),
         )
 
-    def fall(self, clan: Clan, count: int) -> int:
+    def fall(self, clan: Clan, count: int, cause: str = "war") -> int:
         """Fighters of a clan fall: men of fighting age, the weakest first."""
         fighters = sorted(
             (
@@ -1941,7 +2037,7 @@ class Society:
         )[:count]
         for person in fighters:
             if person.clan in self.clans:
-                self.die(person, "war")
+                self.die(person, cause)
         return len(fighters)
 
     def end_war(self, war: War, outcome: str, winner: int = 0) -> None:
@@ -2045,6 +2141,11 @@ class Society:
             self.flow(loser, good, 3, amount)
             self.flow(winner, good, 2, amount)
             taken += amount
+        driven = loser.herd * share // 100
+        if driven and self.keeps_herds(winner):
+            loser.herd -= driven
+            winner.herd += driven
+            self.world.count("herds.plundered", driven)
         if taken:
             self.dirty_clans.update((winner.id, loser.id))
             self.world.count("wars.plundered", taken)
@@ -2284,6 +2385,78 @@ class Society:
                 world.count("knowledge.vanished")
                 world.emit("knowledge_vanished", data={"tech": tech_id, "clan": clan.name})
 
+    def raid(self, clan: Clan, adults: list[Person]) -> None:
+        """Herders and warlike clans ride out against settled neighbours of
+        another people for food and animals. The raided fight back."""
+        world, p = self.world, self.p
+        packs = world.packs
+        if len(adults) < 4:
+            return
+        riding = sum(
+            packs.technologies[t].effects.raid_percent
+            for t in sorted(clan.techs)
+            if t in packs.technologies
+        )
+        if clan.herd <= 0 and riding <= 0 and self.way(clan, "warlike") < 1.0:
+            return
+        targets = sorted(
+            (max(abs(other.y - clan.y), abs(other.x - clan.x)), other.id)
+            for other in self.clans.values()
+            if other.id != clan.id
+            and other.settled
+            and other.culture != clan.culture
+            and not (clan.realm and other.realm == clan.realm)
+            and max(abs(other.y - clan.y), abs(other.x - clan.x)) <= p.raid_reach
+            and (other.food > 0 or other.herd > 0)
+        )
+        if not targets:
+            return
+        target = self.clans[targets[0][1]]
+        factors = [("warlike_people", self.way(clan, "warlike"))]
+        if riding:
+            factors.append(("riders", 1.0 + riding / 100))
+        if clan.herd > 0:
+            factors.append(("herders", 1.5))
+        if not clan.settled:
+            factors.append(("wanderers", 1.5))
+        if clan.unmet and clan.unmet[-1] >= 20:
+            factors.append(("hungry", 3.0))
+        if self.same_faith(clan, target):
+            factors.append(("same_faith", 0.5))
+        if target.id in clan.partners:
+            factors.append(("trade_partner", 0.2))
+        if not world.roll("raid", "group", clan.id, p.raid_chance_per_year, factors):
+            return
+        attack = self.clan_strength(clan) * (100 + riding) // 100
+        defence = self.clan_strength(target) * 120 // 100
+        chance = attack / max(1, attack + defence)
+        won = world.roll("raid_succeeds", "group", clan.id, chance, [])
+        data = {
+            "clan": clan.name,
+            "clan_id": clan.id,
+            "target": target.name,
+            "target_id": target.id,
+        }
+        if won:
+            food = target.food * p.raid_take_percent // 100
+            driven = target.herd * p.raid_take_percent // 100 if self.keeps_herds(clan) else 0
+            target.food -= food
+            clan.food += food
+            self.flow(target, "food", 3, food)
+            self.flow(clan, "food", 2, food)
+            target.herd -= driven
+            clan.herd += driven
+            fallen = self.fall(target, 1, "raid")
+            world.count("raids.won")
+            world.count("raids.food", food)
+            world.count("herds.raided", driven)
+            world.emit("raid", data={**data, "food": food, "herd": driven, "fallen": fallen})
+        else:
+            fallen = self.fall(clan, 1, "raid")
+            world.count("raids.repelled")
+            world.emit("raid_repelled", data={**data, "fallen": fallen})
+        self.dirty_clans.update((clan.id, target.id))
+
     def year_of_goods(self, clan: Clan) -> None:
         """Close the year's books, use up what the crafts need, and pass goods between partners."""
         world, p = self.world, self.p
@@ -2340,6 +2513,7 @@ class Society:
         if not adults:
             return
         self.year_of_goods(clan)
+        self.herd_year(clan)
         self.note_gifts(clan)
         self.fever(clan)
         self.worship(clan)
@@ -2423,6 +2597,7 @@ class Society:
                     )
 
         self.trade(clan)
+        self.raid(clan, adults)
         self.forget(clan, adults)
         self.kinship(clan)
 
@@ -2447,6 +2622,8 @@ class Society:
             )
             factors = [("works_the_soil", 3.0)] if farms else []
             factors.append(("rooted_people", self.way(clan, "rooted")))
+            if clan.herd > 0 and not farms:
+                factors.append(("herders", p.herders_settle_factor))  # they follow the grass
             if (farms or not hungry) and world.roll(
                 "settle", "group", clan.id, p.settle_chance_per_year, factors
             ):
@@ -2477,6 +2654,7 @@ class Society:
                     self.dirty_persons.add(person_id)
                 host.members.sort()
                 host.food += clan.food
+                host.herd += clan.herd
                 for rid in sorted(clan.stores):
                     host.stores[rid] = host.stores.get(rid, 0) + clan.stores[rid]
                 self.dirty_clans.add(host.id)
@@ -2873,6 +3051,9 @@ class Society:
             clan.stores[rid] -= part
             new.stores[rid] = part
         new.unmet = list(clan.unmet)
+        part = clan.herd * len(movers) // max(1, len(movers) + len(clan.members))
+        clan.herd -= part
+        new.herd = part
         self.walk(clan.y, clan.x, new.y, new.x, len(movers))
         self.dirty_clans.add(clan.id)
         if land is not None and new.realm == land.id:
@@ -2916,6 +3097,14 @@ class Society:
                     * harvest_percent[rid]
                     * world.packs.resources[rid].food_value
                 )
+        if clan.herd > 0:
+            # Herders look for grass: what it gives through the animals.
+            value += (
+                world.stocks[p.herd_grazes][outer].astype(np.int64)
+                * 100
+                * p.herd_food_per_head_month
+                // p.herd_graze_per_head_month
+            )
         score = _box_sum(value, p.forage_radius)
         y_start, x_start = outer[0].start, outer[1].start
         shape = score.shape
@@ -2948,7 +3137,15 @@ class Society:
         world, p = self.world, self.p
         area = self.window(clan.y, clan.x, p.forage_radius)
         harvest_percent, _m, _s, _t = self.effects(clan)
-        return sum(
+        grass = 0
+        if clan.herd > 0:
+            grass = (
+                int(world.stocks[p.herd_grazes][area].astype(np.int64).sum())
+                * 100
+                * p.herd_food_per_head_month
+                // p.herd_graze_per_head_month
+            )
+        return grass + sum(
             int(world.stocks[rid][area].astype(np.int64).sum())
             * harvest_percent[rid]
             * world.packs.resources[rid].food_value
@@ -2977,12 +3174,16 @@ class Society:
         if month >= 9:
             factors.append(("winter", 0.5))
         factors.append(("rooted_people", 2.0 - self.way(clan, "rooted")))
+        if clan.herd > 0:
+            _area, grass = self.pasture(clan)
+            if grass < clan.herd * p.herd_graze_per_head_month * 3:
+                factors.append(("grass_eaten", 4.0))  # the herds need fresh pasture
         if not world.roll("migration", "group", clan.id, p.wander_chance_per_month, factors):
             return
         site = self.best_site(clan)
         if site is None:
             return
-        if unmet_now == 0 and site[0] * 100 <= self.site_score(clan) * 115:
+        if unmet_now == 0 and site[0] * 100 <= self.site_score(clan) * 115 and not clan.herd:
             return  # nowhere clearly better and nobody is hungry
         _score, y, x = site
         distance = max(abs(y - clan.y), abs(x - clan.x))
@@ -3210,6 +3411,7 @@ class Society:
                     "realm": c.realm,
                     "sick_until": c.sick_until,
                     "faith": c.faith,
+                    "herd": c.herd,
                     "immune_until": c.immune_until,
                     "sick_dead": c.sick_dead,
                     "partners": {str(k): c.partners[k] for k in sorted(c.partners)},
@@ -3259,6 +3461,7 @@ class Society:
                 realm=raw.get("realm", 0),
                 sick_until=raw.get("sick_until", 0),
                 faith=raw.get("faith", 0),
+                herd=raw.get("herd", 0),
                 immune_until=raw.get("immune_until", 0),
                 sick_dead=raw.get("sick_dead", 0),
                 partners={int(k): v for k, v in raw.get("partners", {}).items()},

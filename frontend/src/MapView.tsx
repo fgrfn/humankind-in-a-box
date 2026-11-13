@@ -154,7 +154,7 @@ const WALK_SPEED = 0.6; // tiles per second
 const FIGURE_SCALE = SPRITE_SCALE * 0.5;
 
 // Until a figure has its own picture, a close one stands in for it.
-const STAND_INS: Record<string, string> = { sick: "fallen", healer: "elder", shaman: "elder" };
+const STAND_INS: Record<string, string> = { sick: "fallen", healer: "elder", shaman: "elder", herder: "elder" };
 
 function figureFor(person: Human, band: Band): string {
   if (person.age < 16) return "child";
@@ -171,6 +171,7 @@ function figureFor(person: Human, band: Band): string {
   if (person.id === band.leader) return "chieftain";
   if (person.age >= 55) return "elder";
   if (kind === "soil") return "farmer";
+  if (kind === "pasture") return "herder";
   if (kind === "fish") return "fisher";
   if (kind === "game" && band.spear) return "hunter";
   if (kind === "plants" && person.sex === "f") return "gatherer";
@@ -1109,6 +1110,15 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           sprite.scale.set(flip ? -size : size, size);
           lodge.addChildAt(sprite, 0);
         };
+        if (group.herd) {
+          // The herd beside the camp: more kinds of animal as it grows, a pen
+          // where people have settled. Shown once the animal pictures exist.
+          if (group.settled) extra("pen", -TILE_W * 0.7, TILE_H * 0.55, SPRITE_SCALE * 0.6);
+          extra("sheep", -TILE_W * 0.7, TILE_H * 0.5, SPRITE_SCALE * 0.5);
+          if (group.herd >= 20) extra("goats", -TILE_W * 0.45, TILE_H * 0.8, SPRITE_SCALE * 0.5, true);
+          if (group.herd >= 40) extra("cow", -TILE_W * 0.95, TILE_H * 0.75, SPRITE_SCALE * 0.5);
+          if (group.technologies.some((tech) => tech.id === "horse_riding")) extra("tame_horse", TILE_W * 0.95, TILE_H * 0.6, SPRITE_SCALE * 0.5, true);
+        }
         if (group.faith) {
           // Where a faith began stands a stone circle; settled believers keep a
           // shrine, wanderers a sacred fire.

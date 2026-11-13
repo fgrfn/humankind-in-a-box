@@ -313,3 +313,19 @@ faith_forgotten:
   text:
     de: "Niemand glaubt mehr an {faith}."
     en: "Nobody keeps the faith {faith} any more."
+herd_started:
+  importance: 3
+  text:
+    de: "Die {clan} halten die ersten Tiere in einer Herde."
+    en: "The {clan} keep their first animals in a herd."
+raid:
+  importance: 3
+  text:
+    de: "Die {clan} überfallen die {target} und rauben {food} Nahrung und {herd} Tiere. {fallen} der Überfallenen fallen."
+    en: "The {clan} raid the {target} and carry off {food} food and {herd} animals. {fallen} of the raided fall."
+raid_repelled:
+  importance: 3
+  text:
+    de: "Die {target} schlagen einen Überfall der {clan} zurück. {fallen} der Angreifer fallen."
+    en: "The {target} drive off a raid by the {clan}. {fallen} of the raiders fall."
+
