@@ -18,3 +18,9 @@ sheets:
   - file: sheets/people-1.png
     kind: figure
     cells: [woman, man, child, elder, hunter, gatherer, fisher, travellers]
+  - file: sheets/people-2.png
+    kind: figure
+    cells: [warrior, shield_warrior, archer, bronze_warrior, chieftain, fallen, farmer, trader]
+  - file: sheets/buildings-2.png
+    kind: object
+    cells: [granary, well, longhouse, palisade, burial_mound, war_banner, smithy, crop_field]
