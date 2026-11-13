@@ -1138,16 +1138,25 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         const tag = new Container();
         tag.label = "tag";
         tag.position.set(0, -14);
+        // In a land the clans are villages: they go by their place, framed in
+        // the land's colour, and the seat carries the land's name.
+        const village = Boolean(group.realm?.land);
+        const home = group.settled && group.place ? group.place : group.name;
         const label = new Text({
-          text: `${group.settled && group.place ? group.place : group.name} ${group.population}`,
-          style: { fontFamily: "'Barlow Semi Condensed', system-ui, sans-serif", fontSize: 11, fontWeight: "600", fill: 0xf2efe6 },
+          text: village && group.realm?.seat ? `${group.realm.name} ${group.population}` : `${home} ${group.population}`,
+          style: {
+            fontFamily: "'Barlow Semi Condensed', system-ui, sans-serif",
+            fontSize: village && !group.realm?.seat ? 10 : 11,
+            fontWeight: village && group.realm?.seat ? "700" : "600",
+            fill: 0xf2efe6,
+          },
         });
         label.anchor.set(0.5, 1);
         label.resolution = 3;
         const band = group.realm ? 5 : 0;
         const width = label.width + 10 + band;
         const plate = new Graphics();
-        plate.roundRect(-width / 2, -label.height - 3, width, label.height + 4, 3).fill({ color: 0x10242d, alpha: 0.88 }).stroke({ color: peopleColour(group.people_id), width: 1.4 });
+        plate.roundRect(-width / 2, -label.height - 3, width, label.height + 4, 3).fill({ color: 0x10242d, alpha: 0.88 }).stroke({ color: village ? realmColour(group.realm!.id) : peopleColour(group.people_id), width: village && group.realm?.seat ? 2 : 1.4 });
         if (group.realm) plate.rect(-width / 2 + 1.5, -label.height - 1.5, 3.5, label.height + 1).fill(realmColour(group.realm.id));
         if (group.sick) {
           // A fever goes round: a small red cross at the plate's corner.

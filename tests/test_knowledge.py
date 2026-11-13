@@ -45,6 +45,8 @@ RULERS = EARLY_FARMERS + (
     "life.realm_join_chance_per_year: 0.5\n"
     "life.realm_max_clans: 4\n"
     "life.realm_break_on_succession: 0.5\n"
+    "life.land_after_years: 15\n"
+    "life.land_min_villages: 2\n"
 )
 FEVERISH = (
     "life.disease_chance_per_year: 0.2\n"
@@ -406,3 +408,21 @@ def test_faiths_are_born_and_spread(tmp_path: Path, settings: Settings) -> None:
         for row in conn.execute("SELECT id, faith FROM groups WHERE dissolved IS NULL")
     }
     assert held == {clan.id: clan.faith for clan in society.clans.values()}
+
+
+def test_chiefdoms_grow_into_lands(tmp_path: Path, settings: Settings) -> None:
+    path = tmp_path / "w.sqlite"
+    world = simulate(path, world_with(settings, RULERS), 160, 3)
+    society = world.society
+    assert society is not None
+    lands = [r for r in society.realms.values() if r.land_since is not None]
+    assert lands, "no chiefdom became a land"
+    for land in lands:
+        assert land.land_since >= land.founded
+    # The land is stored, and a land's villages are named as such in the chronicle.
+    conn = sqlite3.connect(path)
+    stored = conn.execute("SELECT COUNT(*) FROM realms WHERE land_since IS NOT NULL").fetchone()[0]
+    kinds = {row[0] for row in conn.execute("SELECT type FROM events")}
+    conn.close()
+    assert stored == len(lands)
+    assert "land_formed" in kinds

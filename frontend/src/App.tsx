@@ -60,12 +60,13 @@ function BoxGlyph() {
 
 const WAYS = ["warlike", "trading", "inventive", "rooted", "devout"];
 
-const BANNER_EVENTS = ["war_begun", "realm_conquered", "peace_made", "realm_founded"];
+const BANNER_EVENTS = ["war_begun", "realm_conquered", "peace_made", "realm_founded", "land_formed"];
 const BANNER_TITLES: Record<string, TextKey> = {
   war_begun: "bannerWar",
   realm_conquered: "bannerConquest",
   peace_made: "bannerPeace",
   realm_founded: "bannerRealm",
+  land_formed: "bannerLand",
 };
 
 function Chronicle({ events, t, minImportance, setMinImportance, explain, extinct, locate }: {
@@ -1088,6 +1089,8 @@ export function App() {
   );
 
   const sortedGroups = useMemo(() => [...groups].sort((a, b) => b.population - a.population || a.id - b.id), [groups]);
+  const lands = useMemo(() => realms.filter((item) => item.ended_year === null && item.land_year != null), [realms]);
+  const freeGroups = useMemo(() => sortedGroups.filter((group) => !group.realm?.land), [sortedGroups]);
   const extinct = stats !== null && stats.population === 0 && stats.ever_lived > 0;
   const views: View[] = ["map", "numbers", "clans"];
 
@@ -1117,7 +1120,7 @@ export function App() {
         <nav className="views" aria-label="Views">
           {views.map((name) => (
             <button key={name} className={view === name ? "on" : ""} aria-current={view === name ? "page" : undefined} onClick={() => setView(name)}>
-              {t(name)}
+              {name === "clans" && lands.length > 0 ? t("lands") : t(name)}
             </button>
           ))}
         </nav>
@@ -1138,6 +1141,7 @@ export function App() {
               ["clans", stats.clans],
               ["tallyPeoples", stats.peoples],
               ["realms", stats.realms ?? 0],
+              ["lands", stats.lands ?? 0],
               ["tallyBorn", stats.births_total],
               ["tallyDied", stats.deaths_total],
               ["warsNow", stats.wars_ongoing ?? 0],
@@ -1217,8 +1221,51 @@ export function App() {
           {view === "clans" ? (
             <section className="drawer clans-page" aria-label={t("clans")}>
               <button className="inspector-close" aria-label={t("close")} onClick={() => setView("map")}>×</button>
+              {lands.length > 0 ? (
+                <ul className="clans lands">
+                  {lands.map((item) => {
+                    const villages = sortedGroups.filter((group) => group.realm?.id === item.id);
+                    return (
+                      <li key={item.id} className="land">
+                        <button className="land-head" onClick={() => showOnMap(item.seat_id)}>
+                          <span className="clan-name">
+                            <i className="chip" style={{ background: realmCss(item.id) }} aria-hidden="true" />
+                            {item.name}
+                          </span>
+                          <span className="clan-where">
+                            {item.people ? `${item.people}, ` : ""}
+                            {villages.length} {villages.length === 1 ? t("villageOne") : t("villages")}
+                            {item.ruler ? `, ${t("ruler")} ${item.ruler}` : ""}
+                          </span>
+                          <span className="clan-count">{formatNumber(item.population, lang)}</span>
+                        </button>
+                        <ul className="villages">
+                          {villages.map((group) => (
+                            <li key={group.id}>
+                              <button
+                                className={group.id === selected ? "on" : ""}
+                                onClick={() => {
+                                  setPerson(null);
+                                  setSelected(group.id);
+                                  setPanelOpen(true);
+                                  showOnMap(group.id);
+                                }}
+                              >
+                                <span className="clan-name">{group.settled && group.place ? group.place : group.name}</span>
+                                <span className="clan-where">{group.realm?.seat ? t("landSeat") : group.name}</span>
+                                <span className="clan-count">{group.population}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+              {lands.length > 0 && freeGroups.length > 0 ? <h2 className="free-head">{t("freeClans")}</h2> : null}
               <ul className="clans">
-                {sortedGroups.map((group) => (
+                {freeGroups.map((group) => (
                   <li key={group.id}>
                     <button
                       className={group.id === selected ? "on" : ""}
@@ -1264,7 +1311,7 @@ export function App() {
       <nav className="tabbar" aria-label="Views">
         {views.map((name) => (
           <button key={name} className={view === name ? "on" : ""} aria-current={view === name ? "page" : undefined} onClick={() => setView(name)}>
-            {t(name)}
+            {name === "clans" && lands.length > 0 ? t("lands") : t(name)}
           </button>
         ))}
       </nav>

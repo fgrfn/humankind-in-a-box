@@ -57,3 +57,10 @@ The owner wants a life simulation: people who visibly do things. Decision: the m
 - Battle odds are the plain strength ratio, logged as one roll; the defender's own ground counts 120 percent. Fighting strength is data (`war_percent` on technologies).
 - Who falls is decided, not rolled: men of fighting age at the front, the weakest first. The number follows the size of each side.
 - The seat falls last. A lost battle costs the clan nearest the winner; only a chiefdom reduced to its seat is conquered whole.
+
+## 2026-11-13: lands
+
+- The owner wants clans only in the early world and peoples and lands later. A land is a chiefdom that has lasted (`land_since` on `realms`), not a new table: its clans stay as rows in `groups` and are shown and treated as villages. That keeps births, work, buildings and territory unchanged and every older world loadable.
+- Decisions that belong to the land are made once a year at the seat: forming the land, sharing out food, war. Faith follows the seat strongly. Daily work stays with each village.
+- Food is shared in proportion to each village's monthly need, without dice. What rounding leaves goes to the seat. This is the "shared store per realm" from the plan; other goods stay with each village for now.
+- Free clans stay possible at the edges (foragers and newcomers). They are drawn into lands rather than forced in.

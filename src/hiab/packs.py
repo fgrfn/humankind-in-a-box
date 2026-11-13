@@ -254,6 +254,15 @@ class LifeParams(_Model):
     realm_assimilate_chance_per_year: float = Field(0.05, ge=0.0, le=1.0)
     realm_union_chance: float = Field(0.25, ge=0.0, le=1.0)
     realm_settled_years: int = Field(60, ge=0, le=100000)
+    # A chiefdom that has held together long enough becomes a land. Its clans
+    # are villages from then on: one store, one faith, one people. Grown too
+    # many, a village founds a daughter village instead of a clan of its own,
+    # and villages seldom break away. Lands draw the free clans around them,
+    # so the many clans of the early world give way to peoples and lands.
+    land_after_years: int = Field(50, ge=0, le=100000)
+    land_min_villages: int = Field(3, ge=1, le=10000)
+    land_break_factor: float = Field(0.2, ge=0.0, le=100.0)
+    land_draw_factor: float = Field(2.0, ge=0.0, le=100.0)
     # War. Chiefdoms whose seats lie close may go to war. Once a year there is
     # a battle: strength is adults, raised by knowledge, and the defender has
     # the advantage of its own ground. The loser loses the clan nearest the

@@ -163,6 +163,16 @@ realm_founded:
   text:
     de: "{ruler} von den {clan} sammelt die Clans der Umgebung. Das Häuptlingstum {realm} entsteht."
     en: "{ruler} of the {clan} gathers the clans around. The chiefdom of {realm} is born."
+land_formed:
+  importance: 5
+  text:
+    de: "Aus dem Häuptlingstum {realm} ist ein Land geworden. Seine {villages} Clans sind nun Dörfer mit einem gemeinsamen Lager."
+    en: "The chiefdom of {realm} has become a land. Its {villages} clans are villages now, with one common store."
+village_founded:
+  importance: 2
+  text:
+    de: "Junge Familien der {clan} gründen ein neues Dorf im Land {realm}: {new_clan}."
+    en: "Young families of the {clan} found a new village in the land of {realm}: {new_clan}."
 realm_joined:
   importance: 3
   text:
