@@ -268,3 +268,18 @@ gifted_healer:
   text:
     de: "{name} von den {clan} hat heilende Hände. Weniger Kranke sterben."
     en: "{name} of the {clan} has healing hands. Fewer of the sick die."
+epidemic_began:
+  importance: 4
+  text:
+    de: "Ein Fieber bricht aus bei den {clan}."
+    en: "A fever breaks out among the {clan}."
+epidemic_spread:
+  importance: 3
+  text:
+    de: "Das Fieber der {from} erreicht die {clan}."
+    en: "The fever of the {from} reaches the {clan}."
+epidemic_ended:
+  importance: 3
+  text:
+    de: "Das Fieber bei den {clan} ist vorüber. {dead} sind ihm erlegen."
+    en: "The fever among the {clan} has passed. {dead} died of it."

@@ -153,6 +153,9 @@ const REACH = 5;
 const WALK_SPEED = 0.6; // tiles per second
 const FIGURE_SCALE = SPRITE_SCALE * 0.5;
 
+// Until a figure has its own picture, a close one stands in for it.
+const STAND_INS: Record<string, string> = { sick: "fallen", healer: "elder", shaman: "elder" };
+
 function figureFor(person: Human, band: Band): string {
   if (person.age < 16) return "child";
   const kind = person.activity.split(":")[0];
@@ -162,6 +165,8 @@ function figureFor(person: Human, band: Band): string {
     if (band.techs.has("bow") && person.id % 3 === 0) return "archer";
     return person.id % 2 === 0 ? "shield_warrior" : "warrior";
   }
+  if (kind === "sick") return "sick";
+  if (kind === "heal") return "healer";
   if (person.id === band.leader) return "chieftain";
   if (person.age >= 55) return "elder";
   if (kind === "soil") return "farmer";
@@ -282,7 +287,8 @@ class Crowd {
       if (!band) continue;
       alive.add(person.id);
       let walker = this.walkers.get(person.id);
-      const texture = sheet.textures[figureFor(person, band)] ?? sheet.textures.man;
+      const figure = figureFor(person, band);
+      const texture = sheet.textures[figure] ?? sheet.textures[STAND_INS[figure] ?? "man"] ?? sheet.textures.man;
       if (!walker) {
         const sprite = new Sprite(texture);
         sprite.anchor.set(0.5, 1);
@@ -343,6 +349,7 @@ class Crowd {
         walker.wait -= seconds;
         // Calm motion: a slow bend at work, a turn now and then in a fight.
         if (walker.task === "work") lift = Math.abs(Math.sin(walker.clock * 2.6)) * 0.6;
+        if (walker.task === "work" && walker.person.activity === "sick") lift = 0; // the sick lie still
         if (walker.task === "work" && walker.person.activity.startsWith("fight:")) {
           lift = Math.abs(Math.sin(walker.clock * 4)) * 0.9;
           walker.sprite.scale.x = Math.sin(walker.clock * 0.7 + walker.dx) > 0 ? FIGURE_SCALE : -FIGURE_SCALE;
@@ -1098,6 +1105,10 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           sprite.scale.set(flip ? -size : size, size);
           lodge.addChildAt(sprite, 0);
         };
+        if (group.sick) {
+          // While a fever goes round, the sick lie by a healer's hut.
+          extra("healer_hut", TILE_W * 0.1, -TILE_H * 0.35, SPRITE_SCALE * 0.6);
+        }
         if (group.settled && group.technologies.some((tech) => tech.id === "copper_working")) {
           extra("smithy", -TILE_W * 0.55, TILE_H * 0.1, SPRITE_SCALE * 0.7);
         }
@@ -1126,6 +1137,14 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         const plate = new Graphics();
         plate.roundRect(-width / 2, -label.height - 3, width, label.height + 4, 3).fill({ color: 0x10242d, alpha: 0.88 }).stroke({ color: peopleColour(group.people_id), width: 1.4 });
         if (group.realm) plate.rect(-width / 2 + 1.5, -label.height - 1.5, 3.5, label.height + 1).fill(realmColour(group.realm.id));
+        if (group.sick) {
+          // A fever goes round: a small red cross at the plate's corner.
+          const sx = width / 2 + 5;
+          const sy = -label.height / 2 - 1;
+          plate.circle(sx, sy, 4.6).fill(0xf2efe6).stroke({ color: 0x10242d, width: 1 });
+          plate.rect(sx - 0.9, sy - 3, 1.8, 6).fill(0xc8352c);
+          plate.rect(sx - 3, sy - 0.9, 6, 1.8).fill(0xc8352c);
+        }
         label.position.set(band / 2, 0);
         tag.addChild(plate, label);
         marker.addChild(tag);

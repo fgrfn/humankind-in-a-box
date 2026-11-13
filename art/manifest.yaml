@@ -27,3 +27,9 @@ sheets:
   - file: sheets/terrain-3.png
     kind: object
     cells: [grassy_hill, rocky_hill, mountain, forested_hill, dry_hill, snowy_hill, cliff, mountain_pass]
+  - file: sheets/people-3.png
+    kind: figure
+    cells: [sick, healer, shaman, priestess, mourner, herb_child, storyteller, pilgrim]
+  - file: sheets/buildings-3.png
+    kind: object
+    cells: [shrine, stone_circle, altar_stone, totem_pole, healer_hut, sacred_fire, burial_cairns, sacred_tree]

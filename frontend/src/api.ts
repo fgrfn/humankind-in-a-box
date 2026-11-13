@@ -92,6 +92,7 @@ export interface Group {
   buildings: Building[];
   partners: { id: number; name: string; since_year: number }[];
   leader?: { id: number; name: string } | null;
+  sick?: boolean;
   realm?: { id: number; name: string; seat: boolean } | null;
   stores: Store[];
   members?: { id: number; name: string; sex: "f" | "m"; age: number; children: number; activity: string; activity_text: string }[];

@@ -272,6 +272,9 @@ MIGRATIONS: list[str] = [
     ALTER TABLE cultures ADD COLUMN ways TEXT NOT NULL DEFAULT '{}';
     ALTER TABLE persons ADD COLUMN gift TEXT NOT NULL DEFAULT '';
     """,
+    """
+    ALTER TABLE groups ADD COLUMN sick_until INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -536,6 +539,7 @@ class Store:
                     ),
                     clan.leader,
                     clan.realm,
+                    clan.sick_until,
                 )
             )
         self.conn.executemany(
@@ -566,7 +570,7 @@ class Store:
             ],
         )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
+            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
         )
         self.conn.executemany(
             "INSERT OR REPLACE INTO wars VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",

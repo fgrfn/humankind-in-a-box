@@ -1,5 +1,27 @@
 {
  "frames": {
+  "altar_stone": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 47,
+    "w": 96,
+    "x": 198,
+    "y": 239
+   },
+   "sourceSize": {
+    "h": 47,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 47,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "archer": {
    "anchor": {
     "x": 0.5,
@@ -8,8 +30,8 @@
    "frame": {
     "h": 46,
     "w": 96,
-    "x": 394,
-    "y": 146
+    "x": 198,
+    "y": 191
    },
    "sourceSize": {
     "h": 46,
@@ -30,8 +52,8 @@
    "frame": {
     "h": 65,
     "w": 96,
-    "x": 100,
-    "y": 419
+    "x": 198,
+    "y": 516
    },
    "sourceSize": {
     "h": 65,
@@ -52,8 +74,8 @@
    "frame": {
     "h": 80,
     "w": 96,
-    "x": 394,
-    "y": 489
+    "x": 2,
+    "y": 732
    },
    "sourceSize": {
     "h": 80,
@@ -74,8 +96,8 @@
    "frame": {
     "h": 66,
     "w": 96,
-    "x": 296,
-    "y": 419
+    "x": 394,
+    "y": 516
    },
    "sourceSize": {
     "h": 66,
@@ -96,8 +118,8 @@
    "frame": {
     "h": 53,
     "w": 96,
-    "x": 100,
-    "y": 296
+    "x": 394,
+    "y": 340
    },
    "sourceSize": {
     "h": 53,
@@ -105,6 +127,28 @@
    },
    "spriteSourceSize": {
     "h": 53,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "burial_cairns": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 59,
+    "w": 96,
+    "x": 198,
+    "y": 454
+   },
+   "sourceSize": {
+    "h": 59,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 59,
     "w": 96,
     "x": 0,
     "y": 0
@@ -118,8 +162,8 @@
    "frame": {
     "h": 53,
     "w": 96,
-    "x": 198,
-    "y": 296
+    "x": 2,
+    "y": 395
    },
    "sourceSize": {
     "h": 53,
@@ -140,7 +184,7 @@
    "frame": {
     "h": 41,
     "w": 96,
-    "x": 2,
+    "x": 100,
     "y": 146
    },
    "sourceSize": {
@@ -162,8 +206,8 @@
    "frame": {
     "h": 57,
     "w": 96,
-    "x": 2,
-    "y": 354
+    "x": 394,
+    "y": 395
    },
    "sourceSize": {
     "h": 57,
@@ -228,8 +272,8 @@
    "frame": {
     "h": 65,
     "w": 96,
-    "x": 198,
-    "y": 419
+    "x": 296,
+    "y": 516
    },
    "sourceSize": {
     "h": 65,
@@ -250,8 +294,8 @@
    "frame": {
     "h": 46,
     "w": 96,
-    "x": 2,
-    "y": 194
+    "x": 296,
+    "y": 191
    },
    "sourceSize": {
     "h": 46,
@@ -272,8 +316,8 @@
    "frame": {
     "h": 74,
     "w": 96,
-    "x": 296,
-    "y": 489
+    "x": 394,
+    "y": 656
    },
    "sourceSize": {
     "h": 74,
@@ -360,8 +404,8 @@
    "frame": {
     "h": 53,
     "w": 96,
-    "x": 296,
-    "y": 296
+    "x": 100,
+    "y": 395
    },
    "sourceSize": {
     "h": 53,
@@ -426,8 +470,8 @@
    "frame": {
     "h": 51,
     "w": 96,
-    "x": 296,
-    "y": 243
+    "x": 2,
+    "y": 340
    },
    "sourceSize": {
     "h": 51,
@@ -470,8 +514,8 @@
    "frame": {
     "h": 46,
     "w": 96,
-    "x": 100,
-    "y": 194
+    "x": 394,
+    "y": 191
    },
    "sourceSize": {
     "h": 46,
@@ -514,7 +558,7 @@
    "frame": {
     "h": 43,
     "w": 96,
-    "x": 198,
+    "x": 394,
     "y": 146
    },
    "sourceSize": {
@@ -537,7 +581,7 @@
     "h": 47,
     "w": 96,
     "x": 296,
-    "y": 194
+    "y": 239
    },
    "sourceSize": {
     "h": 47,
@@ -558,8 +602,8 @@
    "frame": {
     "h": 69,
     "w": 96,
-    "x": 2,
-    "y": 489
+    "x": 296,
+    "y": 584
    },
    "sourceSize": {
     "h": 69,
@@ -616,6 +660,72 @@
     "y": 0
    }
   },
+  "healer": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 47,
+    "w": 96,
+    "x": 394,
+    "y": 239
+   },
+   "sourceSize": {
+    "h": 47,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 47,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "healer_hut": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 70,
+    "w": 96,
+    "x": 394,
+    "y": 584
+   },
+   "sourceSize": {
+    "h": 70,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 70,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "herb_child": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 45,
+    "w": 96,
+    "x": 100,
+    "y": 191
+   },
+   "sourceSize": {
+    "h": 45,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 45,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "hunter": {
    "anchor": {
     "x": 0.5,
@@ -624,8 +734,8 @@
    "frame": {
     "h": 48,
     "w": 96,
-    "x": 2,
-    "y": 243
+    "x": 198,
+    "y": 288
    },
    "sourceSize": {
     "h": 48,
@@ -646,8 +756,8 @@
    "frame": {
     "h": 68,
     "w": 96,
-    "x": 394,
-    "y": 419
+    "x": 198,
+    "y": 584
    },
    "sourceSize": {
     "h": 68,
@@ -690,8 +800,8 @@
    "frame": {
     "h": 71,
     "w": 96,
-    "x": 100,
-    "y": 489
+    "x": 2,
+    "y": 656
    },
    "sourceSize": {
     "h": 71,
@@ -713,7 +823,7 @@
     "h": 60,
     "w": 96,
     "x": 296,
-    "y": 354
+    "y": 454
    },
    "sourceSize": {
     "h": 60,
@@ -734,8 +844,8 @@
    "frame": {
     "h": 47,
     "w": 96,
-    "x": 394,
-    "y": 194
+    "x": 2,
+    "y": 288
    },
    "sourceSize": {
     "h": 47,
@@ -800,8 +910,8 @@
    "frame": {
     "h": 43,
     "w": 96,
-    "x": 296,
-    "y": 146
+    "x": 2,
+    "y": 191
    },
    "sourceSize": {
     "h": 43,
@@ -831,6 +941,28 @@
    },
    "spriteSourceSize": {
     "h": 35,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "mourner": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 42,
+    "w": 96,
+    "x": 296,
+    "y": 146
+   },
+   "sourceSize": {
+    "h": 42,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 42,
     "w": 96,
     "x": 0,
     "y": 0
@@ -866,8 +998,8 @@
    "frame": {
     "h": 80,
     "w": 96,
-    "x": 2,
-    "y": 571
+    "x": 100,
+    "y": 732
    },
    "sourceSize": {
     "h": 80,
@@ -888,8 +1020,8 @@
    "frame": {
     "h": 56,
     "w": 96,
-    "x": 394,
-    "y": 296
+    "x": 296,
+    "y": 395
    },
    "sourceSize": {
     "h": 56,
@@ -924,6 +1056,28 @@
     "y": 0
    }
   },
+  "pilgrim": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 52,
+    "w": 96,
+    "x": 296,
+    "y": 340
+   },
+   "sourceSize": {
+    "h": 52,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 52,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "pine": {
    "anchor": {
     "x": 0.5,
@@ -932,8 +1086,8 @@
    "frame": {
     "h": 80,
     "w": 96,
-    "x": 100,
-    "y": 571
+    "x": 198,
+    "y": 732
    },
    "sourceSize": {
     "h": 80,
@@ -941,6 +1095,28 @@
    },
    "spriteSourceSize": {
     "h": 80,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "priestess": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 60,
+    "w": 96,
+    "x": 394,
+    "y": 454
+   },
+   "sourceSize": {
+    "h": 60,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 60,
     "w": 96,
     "x": 0,
     "y": 0
@@ -954,8 +1130,8 @@
    "frame": {
     "h": 71,
     "w": 96,
-    "x": 198,
-    "y": 489
+    "x": 100,
+    "y": 656
    },
    "sourceSize": {
     "h": 71,
@@ -1020,8 +1196,8 @@
    "frame": {
     "h": 51,
     "w": 96,
-    "x": 394,
-    "y": 243
+    "x": 100,
+    "y": 340
    },
    "sourceSize": {
     "h": 51,
@@ -1029,6 +1205,50 @@
    },
    "spriteSourceSize": {
     "h": 51,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "sacred_fire": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 72,
+    "w": 96,
+    "x": 198,
+    "y": 656
+   },
+   "sourceSize": {
+    "h": 72,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 72,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "sacred_tree": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 40,
+    "w": 96,
+    "x": 2,
+    "y": 146
+   },
+   "sourceSize": {
+    "h": 40,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 40,
     "w": 96,
     "x": 0,
     "y": 0
@@ -1078,6 +1298,28 @@
     "y": 0
    }
   },
+  "shaman": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 66,
+    "w": 96,
+    "x": 2,
+    "y": 584
+   },
+   "sourceSize": {
+    "h": 66,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 66,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "shield_warrior": {
    "anchor": {
     "x": 0.5,
@@ -1086,8 +1328,8 @@
    "frame": {
     "h": 51,
     "w": 96,
-    "x": 2,
-    "y": 296
+    "x": 198,
+    "y": 340
    },
    "sourceSize": {
     "h": 51,
@@ -1095,6 +1337,50 @@
    },
    "spriteSourceSize": {
     "h": 51,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "shrine": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 66,
+    "w": 96,
+    "x": 100,
+    "y": 584
+   },
+   "sourceSize": {
+    "h": 66,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 66,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "sick": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 46,
+    "w": 96,
+    "x": 2,
+    "y": 239
+   },
+   "sourceSize": {
+    "h": 46,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 46,
     "w": 96,
     "x": 0,
     "y": 0
@@ -1108,8 +1394,8 @@
    "frame": {
     "h": 57,
     "w": 96,
-    "x": 100,
-    "y": 354
+    "x": 2,
+    "y": 454
    },
    "sourceSize": {
     "h": 57,
@@ -1130,8 +1416,8 @@
    "frame": {
     "h": 63,
     "w": 96,
-    "x": 394,
-    "y": 354
+    "x": 2,
+    "y": 516
    },
    "sourceSize": {
     "h": 63,
@@ -1210,6 +1496,28 @@
     "y": 0
    }
   },
+  "stone_circle": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 55,
+    "w": 96,
+    "x": 198,
+    "y": 395
+   },
+   "sourceSize": {
+    "h": 55,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 55,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "storage_pit": {
    "anchor": {
     "x": 0.5,
@@ -1218,7 +1526,7 @@
    "frame": {
     "h": 41,
     "w": 96,
-    "x": 100,
+    "x": 198,
     "y": 146
    },
    "sourceSize": {
@@ -1232,6 +1540,28 @@
     "y": 0
    }
   },
+  "storyteller": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 47,
+    "w": 96,
+    "x": 100,
+    "y": 288
+   },
+   "sourceSize": {
+    "h": 47,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 47,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "tent": {
    "anchor": {
     "x": 0.5,
@@ -1240,8 +1570,8 @@
    "frame": {
     "h": 64,
     "w": 96,
-    "x": 2,
-    "y": 419
+    "x": 100,
+    "y": 516
    },
    "sourceSize": {
     "h": 64,
@@ -1249,6 +1579,28 @@
    },
    "spriteSourceSize": {
     "h": 64,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "totem_pole": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 73,
+    "w": 96,
+    "x": 296,
+    "y": 656
+   },
+   "sourceSize": {
+    "h": 73,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 73,
     "w": 96,
     "x": 0,
     "y": 0
@@ -1262,8 +1614,8 @@
    "frame": {
     "h": 48,
     "w": 96,
-    "x": 100,
-    "y": 243
+    "x": 296,
+    "y": 288
    },
    "sourceSize": {
     "h": 48,
@@ -1328,8 +1680,8 @@
    "frame": {
     "h": 80,
     "w": 96,
-    "x": 198,
-    "y": 571
+    "x": 296,
+    "y": 732
    },
    "sourceSize": {
     "h": 80,
@@ -1350,8 +1702,8 @@
    "frame": {
     "h": 50,
     "w": 96,
-    "x": 198,
-    "y": 243
+    "x": 394,
+    "y": 288
    },
    "sourceSize": {
     "h": 50,
@@ -1372,8 +1724,8 @@
    "frame": {
     "h": 58,
     "w": 96,
-    "x": 198,
-    "y": 354
+    "x": 100,
+    "y": 454
    },
    "sourceSize": {
     "h": 58,
@@ -1394,8 +1746,8 @@
    "frame": {
     "h": 46,
     "w": 96,
-    "x": 198,
-    "y": 194
+    "x": 100,
+    "y": 239
    },
    "sourceSize": {
     "h": 46,
@@ -1413,11 +1765,13 @@
   "format": "RGBA8888",
   "image": "atlas.png",
   "kinds": {
+   "altar_stone": "object",
    "archer": "figure",
    "berry_bush": "object",
    "birch": "object",
    "boulder": "object",
    "bronze_warrior": "figure",
+   "burial_cairns": "object",
    "burial_mound": "object",
    "campfire": "object",
    "chieftain": "figure",
@@ -1441,6 +1795,9 @@
    "granary": "object",
    "grass": "terrain",
    "grassy_hill": "object",
+   "healer": "figure",
+   "healer_hut": "object",
+   "herb_child": "figure",
    "hunter": "figure",
    "hut": "object",
    "ice": "terrain",
@@ -1451,25 +1808,36 @@
    "moss": "terrain",
    "mountain": "object",
    "mountain_pass": "object",
+   "mourner": "figure",
    "mud": "terrain",
    "oak": "object",
    "palisade": "object",
    "path": "terrain",
+   "pilgrim": "figure",
    "pine": "object",
+   "priestess": "figure",
    "reeds": "object",
    "rock": "terrain",
    "rocky_hill": "object",
    "ruin": "object",
+   "sacred_fire": "object",
+   "sacred_tree": "object",
    "sand": "terrain",
    "shallow_water": "terrain",
+   "shaman": "figure",
    "shield_warrior": "figure",
+   "shrine": "object",
+   "sick": "figure",
    "site": "object",
    "smithy": "object",
    "snow": "terrain",
    "snowy_hill": "object",
    "steppe": "terrain",
+   "stone_circle": "object",
    "storage_pit": "object",
+   "storyteller": "figure",
    "tent": "object",
+   "totem_pole": "object",
    "trader": "figure",
    "travellers": "figure",
    "tundra": "terrain",
@@ -1480,7 +1848,7 @@
   },
   "scale": "1",
   "size": {
-   "h": 653,
+   "h": 814,
    "w": 530
   },
   "tile": {

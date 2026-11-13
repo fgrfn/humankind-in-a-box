@@ -86,6 +86,9 @@ class Clan:
     place: int = 0
     famine: bool = False
     dissolved: int | None = None
+    sick_until: int = 0  # a fever goes round until this tick
+    immune_until: int = 0  # who lived through one is spared until this tick
+    sick_dead: int = 0  # who died of the current fever
 
 
 @dataclass(slots=True)
@@ -684,6 +687,7 @@ class Society:
             place = self.places[clan.place]
             site = next((b for b in place["buildings"] if b["state"] == "site"), None)
         hungry = (clan.unmet[-1] if clan.unmet else 0) >= 20
+        adults = self.nurse(clan, adults)
         adults = self.muster(clan, adults)
         adults = self.fetch_goods(clan, adults)
         if site is None or hungry or len(adults) < 2:
@@ -853,6 +857,91 @@ class Society:
             self.set_work(crew, rid, y, x)
             self.walk(clan.y, clan.x, y, x, len(crew))
 
+    # ---- sickness -----------------------------------------------------------
+
+    def fever(self, clan: Clan) -> None:
+        """A fever ends, breaks out, or comes over from a neighbour."""
+        world, p = self.world, self.p
+        if clan.sick_until and clan.sick_until <= world.tick:
+            world.emit(
+                "epidemic_ended",
+                data={"clan": clan.name, "clan_id": clan.id, "dead": clan.sick_dead},
+            )
+            clan.sick_until, clan.sick_dead = 0, 0
+            clan.immune_until = world.tick + p.disease_immunity_years * DAYS_PER_YEAR
+            self.dirty_clans.add(clan.id)
+            return
+        if clan.sick_until or clan.immune_until > world.tick:
+            return
+        # Where it can come from: trade partners, the chiefdom, neighbours.
+        near = [
+            other
+            for other in (self.clans[cid] for cid in sorted(self.clans))
+            if other.id != clan.id
+            and other.sick_until > world.tick
+            and (
+                other.id in clan.partners
+                or (clan.realm and other.realm == clan.realm)
+                or max(abs(other.y - clan.y), abs(other.x - clan.x)) <= p.contact_radius
+            )
+        ]
+        if near:
+            source = near[0]
+            if world.roll(
+                "infection",
+                "group",
+                clan.id,
+                p.disease_spread_chance,
+                [("contacts", float(len(near)))],
+            ):
+                self.fall_sick(clan, source)
+            return
+        factors = []
+        if clan.settled:
+            factors.append(("settled", 2.0))
+        if len(clan.members) > 60:
+            factors.append(("crowded", len(clan.members) / 60))
+        if clan.unmet and sum(clan.unmet) // len(clan.unmet) >= 15:
+            factors.append(("hungry", 1.5))
+        if clan.realm and self.at_war(clan.realm):
+            factors.append(("at_war", 1.5))
+        if world.roll("outbreak", "group", clan.id, p.disease_chance_per_year, factors):
+            self.fall_sick(clan, None)
+
+    def fall_sick(self, clan: Clan, source: Clan | None) -> None:
+        world = self.world
+        clan.sick_until = world.tick + self.p.disease_months * DAYS_PER_MONTH
+        clan.sick_dead = 0
+        self.dirty_clans.add(clan.id)
+        world.count("disease.outbreaks" if source is None else "disease.spread")
+        if source is None:
+            world.emit("epidemic_began", data={"clan": clan.name, "clan_id": clan.id})
+        else:
+            world.emit(
+                "epidemic_spread",
+                data={
+                    "clan": clan.name,
+                    "clan_id": clan.id,
+                    "from": source.name,
+                    "from_id": source.id,
+                },
+            )
+
+    def nurse(self, clan: Clan, adults: list[Person]) -> list[Person]:
+        """In a fever some lie sick at the camp, and who can heal tends them."""
+        if clan.sick_until <= self.world.tick:
+            return adults
+        count = len(adults) * self.p.disease_sick_percent // 100
+        if count == 0:
+            return adults
+        sick = sorted(adults, key=lambda a: (a.traits[0], a.id))[:count]
+        self.set_work(sick, "sick", clan.y, clan.x)
+        healers = [a for a in adults if a.gift == "healer" and a not in sick]
+        if healers:
+            self.set_work(healers, "heal", clan.y, clan.x)
+        resting = {a.id for a in sick} | {a.id for a in healers}
+        return [a for a in adults if a.id not in resting]
+
     # ---- the gifted -------------------------------------------------------
 
     GIFTS = ("leader", "inventor", "warrior", "healer")
@@ -914,8 +1003,16 @@ class Society:
             factors.append(("vigor", 1.5 - person.traits[0] / 100))
         if "healer" in self.gifts.get(clan.id, ()):
             factors.append(("healer_in_clan", 0.85))
+        sick = clan.sick_until > world.tick
+        if sick:
+            fever = p.disease_death_factor
+            if "healer" in self.gifts.get(clan.id, ()):
+                fever = 1.0 + (fever - 1.0) / 2  # a healer halves what the fever adds
+            factors.append(("fever", fever))
         if world.roll(f"death.{band}", "person", person.id, min(base, 1.0), factors, detail=True):
-            self.die(person, "hunger" if unmet >= 25 else band)
+            if sick:
+                clan.sick_dead += 1
+            self.die(person, "disease" if sick else "hunger" if unmet >= 25 else band)
             return
 
         if age < p.adult_age:
@@ -2037,6 +2134,7 @@ class Society:
             return
         self.year_of_goods(clan)
         self.note_gifts(clan)
+        self.fever(clan)
         self.follow(clan, adults)
         self.rule(clan, adults)
 
@@ -2865,6 +2963,9 @@ class Society:
                     "culture": c.culture,
                     "leader": c.leader,
                     "realm": c.realm,
+                    "sick_until": c.sick_until,
+                    "immune_until": c.immune_until,
+                    "sick_dead": c.sick_dead,
                     "partners": {str(k): c.partners[k] for k in sorted(c.partners)},
                     "unused": {k: c.unused[k] for k in sorted(c.unused)},
                     "stores": dict(sorted(c.stores.items())),
@@ -2910,6 +3011,9 @@ class Society:
                 culture=raw.get("culture", 0),
                 leader=raw.get("leader", 0),
                 realm=raw.get("realm", 0),
+                sick_until=raw.get("sick_until", 0),
+                immune_until=raw.get("immune_until", 0),
+                sick_dead=raw.get("sick_dead", 0),
                 partners={int(k): v for k, v in raw.get("partners", {}).items()},
                 unused=dict(raw.get("unused", {})),
                 stores=dict(raw.get("stores", {})),
