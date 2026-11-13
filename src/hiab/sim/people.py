@@ -103,6 +103,9 @@ class Realm:
     ruler: int  # person
     people: int  # the people of the seat when it was founded
     ended: int | None = None
+    # When the chiefdom grew into a land: its clans are villages from then on,
+    # sharing stores, faith and fate, and no longer go their own ways.
+    land_since: int | None = None
 
 
 @dataclass(slots=True)
@@ -890,7 +893,8 @@ class Society:
         seat = self.clans.get(realm.seat) if realm is not None and realm.ended is None else None
         sources = []
         if seat is not None and seat.id != clan.id and seat.faith and seat.faith != clan.faith:
-            sources.append((seat, 4.0))
+            # A land has one faith: the villages follow the seat.
+            sources.append((seat, 12.0 if realm is not None and realm.land_since else 4.0))
         for other in (self.clans[cid] for cid in sorted(self.clans)):
             if other.id == clan.id or not other.faith or other.faith == clan.faith:
                 continue
@@ -1441,6 +1445,58 @@ class Society:
             if other_id != clan.id and self.clans[other_id].realm == clan.realm
         ]
 
+    def land_of(self, clan: Clan) -> Realm | None:
+        """The land the clan is a village of, if its chiefdom has become one."""
+        realm = self.realms.get(clan.realm)
+        if realm is None or realm.ended is not None or realm.land_since is None:
+            return None
+        return realm
+
+    def land_year(self, realm: Realm, seat: Clan) -> None:
+        """Decided once a year at the seat: a chiefdom old and large enough becomes
+        a land, and a land evens out its stores among its villages."""
+        world, p = self.world, self.p
+        villages = self.realm_clans(realm)
+        if realm.land_since is None:
+            old = world.tick - realm.founded >= p.land_after_years * DAYS_PER_YEAR
+            if not old or len(villages) < p.land_min_villages:
+                return
+            realm.land_since = world.tick
+            self.dirty_realms.add(realm.id)
+            world.count("lands.formed")
+            world.emit(
+                "land_formed",
+                data={
+                    "realm": realm.name,
+                    "realm_id": realm.id,
+                    "villages": len(villages),
+                    "clan": seat.name,
+                    "clan_id": seat.id,
+                },
+            )
+        # One store for the land: what villages hold beyond their share goes to
+        # those that hold less, so no village starves while another's food spoils.
+        needs = {v.id: self.monthly_need(v) for v in villages}
+        total_need = sum(needs.values())
+        total_food = sum(v.food for v in villages)
+        if total_need <= 0 or len(villages) < 2:
+            return
+        fair = {v.id: total_food * needs[v.id] // total_need for v in villages}
+        moved = 0
+        for village in villages:
+            change = fair[village.id] - village.food
+            if change > 0:
+                self.flow(village, "food", 2, change)
+                moved += change
+            elif change < 0:
+                self.flow(village, "food", 3, -change)
+            village.food = fair[village.id]
+            self.dirty_clans.add(village.id)
+        # What rounding left over stays at the seat.
+        seat.food += total_food - sum(fair.values())
+        if moved:
+            world.count("lands.shared_food", moved)
+
     def follow(self, clan: Clan, adults: list[Person]) -> None:
         """A clan follows one of its adults: the one others listen to most.
 
@@ -1493,6 +1549,8 @@ class Society:
             factors = [] if clan.culture == realm.people else [("other_people", 2.0)]
             if world.tick - realm.founded >= p.realm_settled_years * DAYS_PER_YEAR:
                 factors.append(("old_realm", 0.4))
+            if realm.land_since is not None:
+                factors.append(("one_land", p.land_break_factor))
             if world.roll(
                 "realm_breaks_away", "group", clan.id, p.realm_break_on_succession, factors
             ):
@@ -1540,12 +1598,14 @@ class Society:
             if seat is None:
                 return
             if clan.id != seat.id:
-                if max(abs(clan.y - seat.y), abs(clan.x - seat.x)) > p.realm_reach * 2:
+                far = p.realm_reach * (3 if realm.land_since is not None else 2)
+                if max(abs(clan.y - seat.y), abs(clan.x - seat.x)) > far:
                     self.leave_realm(clan, realm, "too_far")
                     return
                 self.assimilate(clan, realm)
                 return
             self.reach_out(clan, realm, adults)
+            self.land_year(realm, clan)
             self.war_year(realm, clan)
             return
         if clan.realm:  # a realm that has ended
@@ -1637,6 +1697,8 @@ class Society:
                 factors.append(("wandering", 0.4))
             if self.same_faith(seat, other):
                 factors.append(("same_faith", 1.5))
+            if realm.land_since is not None:
+                factors.append(("a_land", p.land_draw_factor))  # its stores and peace draw
             if not world.roll(
                 "realm_joined", "group", other.id, p.realm_join_chance_per_year, factors
             ):
@@ -2071,6 +2133,8 @@ class Society:
                 factors.append(
                     ("speaks_the_rulers_tongue", 0.05) if own else ("bound_by_realm", 0.2)
                 )
+                if bound is not None and bound.land_since is not None:
+                    factors.append(("one_land", 0.1))  # villages of a land stay one people
             if clan.settled:
                 factors.append(("settled", 1.5))
             if world.roll(
@@ -2393,12 +2457,16 @@ class Society:
             if world.roll("clan_split", "group", clan.id, p.clan_split_chance_per_year, factors):
                 self.split(clan)
         elif len(adults) <= p.clan_merge_adults:
-            hosts = [
-                self.clans[cid]
-                for cid in sorted(self.clans)
-                if cid != clan.id
-                and max(abs(self.clans[cid].y - clan.y), abs(self.clans[cid].x - clan.x)) <= 4
-            ]
+            hosts = sorted(
+                (
+                    self.clans[cid]
+                    for cid in sorted(self.clans)
+                    if cid != clan.id
+                    and max(abs(self.clans[cid].y - clan.y), abs(self.clans[cid].x - clan.x)) <= 4
+                ),
+                # The last of a village join a village of the same land first.
+                key=lambda host: (not (clan.realm and host.realm == clan.realm), host.id),
+            )
             if hosts and world.roll("clan_merge", "group", clan.id, 0.5, []):
                 host = hosts[0]
                 for person_id in list(clan.members):
@@ -2763,19 +2831,23 @@ class Society:
         leaving = set(families[1::2])
         if not leaving:
             return
-        site = self.best_site(clan, min_distance=3)
+        land = self.land_of(clan)
+        # In a land, the young families found a new village near by; it keeps the
+        # tongue of the land. Elsewhere a new clan goes off and soon talks its own way.
+        site = self.best_site(clan, min_distance=2 if land is not None else 3)
         if site is None:
             return
-        new = self.add_clan(
-            site[1], site[2], clan.id, self.drift_language(clan.language), clan.culture
-        )
+        language = dict(clan.language) if land is not None else self.drift_language(clan.language)
+        new = self.add_clan(site[1], site[2], clan.id, language, clan.culture)
         new.techs = dict(clan.techs)
+        new.faith = clan.faith if land is not None else new.faith
         for tech_id in sorted(new.techs):
             self.new_discoveries.append((new.id, tech_id, self.world.tick, 0, "inherited"))
         realm = self.realms.get(clan.realm)
         if realm is not None and realm.ended is None and realm.seat in self.clans:
             seat = self.clans[realm.seat]
-            near = max(abs(new.y - seat.y), abs(new.x - seat.x)) <= self.p.realm_reach * 2
+            reach = self.p.realm_reach * (3 if land is not None else 2)
+            near = max(abs(new.y - seat.y), abs(new.x - seat.x)) <= reach
             room = 1 + len(self.realm_members(seat)) < self.p.realm_max_clans
             if near and room:
                 new.realm = realm.id  # the daughter clan stays under the same rule
@@ -2803,6 +2875,20 @@ class Society:
         new.unmet = list(clan.unmet)
         self.walk(clan.y, clan.x, new.y, new.x, len(movers))
         self.dirty_clans.add(clan.id)
+        if land is not None and new.realm == land.id:
+            self.world.count("lands.villages_founded")
+            self.world.emit(
+                "village_founded",
+                data={
+                    "clan": clan.name,
+                    "clan_id": clan.id,
+                    "new_clan": new.name,
+                    "new_clan_id": new.id,
+                    "realm": land.name,
+                    "realm_id": land.id,
+                },
+            )
+            return
         self.world.count("clans.split")
         self.world.emit(
             "clan_split",
@@ -3090,6 +3176,7 @@ class Society:
                     "ruler": r.ruler,
                     "people": r.people,
                     "ended": r.ended,
+                    "land_since": r.land_since,
                 }
                 for r in (self.realms[rid] for rid in sorted(self.realms))
             ],

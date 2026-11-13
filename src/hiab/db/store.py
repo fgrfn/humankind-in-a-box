@@ -289,6 +289,9 @@ MIGRATIONS: list[str] = [
     ) WITHOUT ROWID;
     ALTER TABLE groups ADD COLUMN faith INTEGER NOT NULL DEFAULT 0;
     """,
+    """
+    ALTER TABLE realms ADD COLUMN land_since INTEGER;
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -618,7 +621,7 @@ class Store:
             ],
         )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO realms VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO realms VALUES (?,?,?,?,?,?,?,?,?)",
             [
                 (
                     world.id,
@@ -629,6 +632,7 @@ class Store:
                     realm.seat,
                     realm.ruler,
                     realm.people,
+                    realm.land_since,
                 )
                 for realm in (society.realms[rid] for rid in sorted(society.dirty_realms))
             ],
