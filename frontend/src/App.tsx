@@ -58,6 +58,8 @@ function BoxGlyph() {
   );
 }
 
+const WAYS = ["warlike", "trading", "inventive", "rooted", "devout"];
+
 const BANNER_EVENTS = ["war_begun", "realm_conquered", "peace_made", "realm_founded"];
 const BANNER_TITLES: Record<string, TextKey> = {
   war_begun: "bannerWar",
@@ -230,6 +232,19 @@ function Numbers({ stats, series, discoveries, peoples, realms, wars, worldStore
                 {item.ended_year === null ? `, ${item.clans} ${item.clans === 1 ? t("clansOne") : t("clans")}` : ` – ${item.ended_year}`}
                 {item.tiles ? `, ${formatNumber(item.tiles, lang)} ${t("tilesOfLand")}` : ""}, {t("sounds")} {item.consonants.split("").join(" ")} · {item.vowels.split("").join(" ")}
               </span>
+              {item.ways && Object.keys(item.ways).length ? (
+                <span className="state ways">
+                  {WAYS.map((way) => {
+                    const value = item.ways![way] ?? 50;
+                    // Only what stands out is named: a people is described by its leanings.
+                    if (value >= 65) return t(`way_${way}_high` as TextKey);
+                    if (value <= 35) return t(`way_${way}_low` as TextKey);
+                    return null;
+                  })
+                    .filter(Boolean)
+                    .join(", ") || t("way_none")}
+                </span>
+              ) : null}
               {item.ended_year === null && Object.values(item.stores).some((amount) => amount > 0) ? (
                 <span className="state">
                   {t("inStore")}:{" "}
@@ -595,6 +610,7 @@ function PersonCard({ person, t, onPerson, onTree }: { person: PersonDetail; t: 
   return (
     <>
       <h2>{person.name}</h2>
+      {person.gift ? <p className="gift">{t(`gift_${person.gift}` as TextKey)}</p> : null}
       <p className="lede">
         {person.clan_name ? `${person.clan_name}, ` : ""}
         {person.died_year === null ? `${t("age")} ${person.age}` : `${t("died")} ${t("year")} ${person.died_year}, ${t("age")} ${person.age}${person.cause === "war" ? `, ${t("fellInWar")}` : person.cause === "hunger" ? `, ${t("diedOfHunger")}` : ""}`}

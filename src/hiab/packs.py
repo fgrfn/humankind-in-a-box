@@ -147,6 +147,9 @@ class LifeParams(_Model):
     # What people already know when the world begins: fire is far older than
     # any people the simulation starts with.
     start_technologies: list[str] = Field(default_factory=list)
+    # Now and then someone grows up who changes things: a born leader, an
+    # inventor, a great warrior, a healer. Rolled once when a person comes of age.
+    gifted_chance: float = Field(0.004, ge=0.0, le=1.0)
     adult_age: int = Field(ge=10, le=30)
     elder_age: int = Field(ge=30, le=90)
     max_fertile_age: int = Field(ge=20, le=60)

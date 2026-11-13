@@ -233,3 +233,38 @@ knowledge_vanished:
   text:
     de: "Mit den {clan} vergisst die Welt {tech}. Niemand kennt es mehr."
     en: "With the {clan}, the world forgets {tech}. Nobody knows it any more."
+volcanic_winter:
+  importance: 5
+  text:
+    de: "Ein Berg speit Feuer, irgendwo jenseits jeder Kunde. Asche verdunkelt den Himmel, der Sommer bleibt aus, und für Jahre wächst kaum etwas."
+    en: "A mountain spews fire somewhere beyond all knowledge. Ash darkens the sky, summer fails, and for years hardly anything grows."
+great_drought:
+  importance: 4
+  text:
+    de: "Eine große Dürre beginnt in {region}. Jahrelang bleibt der Regen aus."
+    en: "A great drought begins in {region}. For years the rain stays away."
+golden_years:
+  importance: 3
+  text:
+    de: "Goldene Jahre in {region}: milde Winter, reiche Ernten, viel Wild."
+    en: "Golden years in {region}: mild winters, rich harvests, plenty of game."
+gifted_leader:
+  importance: 4
+  text:
+    de: "Unter den {clan} wächst {name} heran, dem die Menschen folgen, ehe er ein Wort gesagt hat."
+    en: "Among the {clan}, {name} comes of age, someone people follow before a word is said."
+gifted_inventor:
+  importance: 4
+  text:
+    de: "{name} von den {clan} sieht Dinge, die andere übersehen. Neues wird bald folgen."
+    en: "{name} of the {clan} sees what others overlook. New things will soon follow."
+gifted_warrior:
+  importance: 4
+  text:
+    de: "{name} von den {clan} ist stärker und kühner als alle anderen. Man wird von ihm hören."
+    en: "{name} of the {clan} is stronger and bolder than anyone. People will hear of this one."
+gifted_healer:
+  importance: 4
+  text:
+    de: "{name} von den {clan} hat heilende Hände. Weniger Kranke sterben."
+    en: "{name} of the {clan} has healing hands. Fewer of the sick die."

@@ -236,7 +236,13 @@ class World:
     def _monthly_rules(self, month: int) -> None:
         for rule_id in sorted(self.packs.rules):
             rule = self.packs.rules[rule_id]
-            if rule.scope != "region" or rule.month != month:
+            if rule.month != month:
+                continue
+            if rule.scope == "world":
+                # Rare events that strike everyone at once, such as a volcano's winter.
+                if self.roll(rule_id, "world", 0, rule.base_chance_per_year, []):
+                    self.emit(rule.event, data={"rule": rule_id})
+                    self._apply_effects(rule, -1)
                 continue
             for region in range(self.map.region_count):
                 if "land" not in self.static_facts[region]:
@@ -253,7 +259,8 @@ class World:
                     self._apply_effects(rule, region)
 
     def _apply_effects(self, rule: Rule, region: int) -> None:
-        inside = self.map.region == region
+        """Region -1 means the whole world."""
+        inside = self.map.region == region if region >= 0 else np.ones(self.map.region.shape, bool)
         for effect in rule.effects:
             for resource in effect.resources:
                 stock = self.stocks[resource]
@@ -266,7 +273,8 @@ class World:
                     )
                 else:
                     until = self.tick + effect.months * DAYS_PER_MONTH
-                    self.modifiers.append((until, region, resource, effect.percent))
+                    for target in range(self.map.region_count) if region < 0 else [region]:
+                        self.modifiers.append((until, target, resource, effect.percent))
 
     def _ecology(self) -> None:
         self.modifiers = [m for m in self.modifiers if m[0] > self.tick]

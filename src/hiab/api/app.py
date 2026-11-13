@@ -313,6 +313,7 @@ def create_app(
                 {
                     "id": row["id"],
                     "name": row["name"],
+                    "ways": json.loads(row["ways"]) if row["ways"] else {},
                     "parent_id": row["parent_culture"],
                     "parent": names.get(row["parent_culture"]),
                     "founded_year": row["founded"] // 360,
@@ -1037,6 +1038,7 @@ def create_app(
                 )
             ],
             "discoveries": row["discoveries"],
+            "gift": row["gift"] or None,
         }
 
     @api.get("/worlds/{world_id}/technologies")
