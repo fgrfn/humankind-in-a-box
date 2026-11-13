@@ -201,10 +201,17 @@ class LifeParams(_Model):
     # or a clan has moved too far from the seat, the bond may break.
     realm_min_adults: int = Field(12, ge=1, le=10000)
     realm_found_chance_per_year: float = Field(0.01, ge=0.0, le=1.0)
-    realm_join_chance_per_year: float = Field(0.04, ge=0.0, le=1.0)
+    realm_join_chance_per_year: float = Field(0.05, ge=0.0, le=1.0)
     realm_reach: int = Field(14, ge=1, le=200)
-    realm_max_clans: int = Field(10, ge=1, le=10000)
-    realm_break_on_succession: float = Field(0.2, ge=0.0, le=1.0)
+    realm_max_clans: int = Field(20, ge=1, le=10000)
+    realm_break_on_succession: float = Field(0.12, ge=0.0, le=1.0)
+    # Over generations a chiefdom becomes one people: clans of other peoples in
+    # it take up the language of the seat. Clans that split off stay in it. A
+    # chiefdom whose ruler has died may submit to a larger neighbour. So the
+    # many small groups of the early world settle into fewer, larger ones.
+    realm_assimilate_chance_per_year: float = Field(0.05, ge=0.0, le=1.0)
+    realm_union_chance: float = Field(0.25, ge=0.0, le=1.0)
+    realm_settled_years: int = Field(60, ge=0, le=100000)
     # Land. Every clan holds the tiles around its camp on which nobody presses
     # harder. How hard it presses follows from its adults, what it has built and
     # whether it is settled; hunger weakens it. Strangers gather less on held land.
