@@ -228,6 +228,13 @@ def create_app(
             "width": row["width"],
             "height": row["height"],
             "biomes": list(BIOMES),
+            # How much of a growing resource a tile of each biome can hold, so the
+            # map can show woods and bushes thinning out and growing back.
+            "capacity": {
+                resource: dict(sorted(packs.resources[resource].capacity.items()))
+                for resource in ("wood", "plants")
+                if resource in packs.resources
+            },
             "deposits": [
                 {
                     "id": deposit_id,

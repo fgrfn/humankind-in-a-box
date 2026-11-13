@@ -116,6 +116,7 @@ class TechEffects(_Model):
     enables_settlement: bool = False
     group_adults: int = Field(0, ge=0, le=100000)  # more adults a group can hold together
     war_percent: int = Field(0, ge=0, le=1000)  # added to the fighting strength of a clan
+    labour_percent: int = Field(0, ge=0, le=1000)  # more food one worker brings in
 
 
 class Technology(_Model):
@@ -143,6 +144,9 @@ class LifeParams(_Model):
     start_families: int = Field(ge=1, le=200)  # per starting people
     # How many peoples the world begins with, far apart, each with its own speech.
     start_peoples: int = Field(1, ge=1, le=12)
+    # What people already know when the world begins: fire is far older than
+    # any people the simulation starts with.
+    start_technologies: list[str] = Field(default_factory=list)
     adult_age: int = Field(ge=10, le=30)
     elder_age: int = Field(ge=30, le=90)
     max_fertile_age: int = Field(ge=20, le=60)

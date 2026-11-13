@@ -24,3 +24,6 @@ sheets:
   - file: sheets/buildings-2.png
     kind: object
     cells: [granary, well, longhouse, palisade, burial_mound, war_banner, smithy, crop_field]
+  - file: sheets/terrain-3.png
+    kind: object
+    cells: [grassy_hill, rocky_hill, mountain, forested_hill, dry_hill, snowy_hill, cliff, mountain_pass]

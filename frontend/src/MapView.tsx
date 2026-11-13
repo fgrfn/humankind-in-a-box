@@ -397,6 +397,7 @@ interface Scene {
   camps: Container;
   sheet: Spritesheet | null;
   natureAt: Map<number, Sprite>;
+  natureKind: Map<number, string>;
 }
 
 // Where to send the camera: a clan, or a tile.
@@ -418,6 +419,7 @@ interface Props {
   realms: Realm[];
   wars: War[];
   year: number;
+  stocks: Record<string, number[]>;
   links: TradeLink[];
   active: boolean;
   selected: number | null;
@@ -426,7 +428,7 @@ interface Props {
   onPerson: (id: number) => void;
 }
 
-export function MapView({ active, map, steps, groups, places, people, land, landBy, realms, wars, year, links, selected, focus, onSelect, onPerson }: Props) {
+export function MapView({ active, map, steps, groups, places, people, land, landBy, realms, wars, year, stocks, links, selected, focus, onSelect, onPerson }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<Scene | null>(null);
   const ready = useRef<Promise<void> | null>(null);
@@ -473,7 +475,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         const camps = new Container();
         world.addChild(terrain, fields, paths, borders, routes, nature, buildings, people, names, camps);
         app.stage.addChild(world);
-        scene.current = { app, world, terrain, paths, borders, names, routes, fields, nature, buildings, people, camps, sheet, natureAt: new Map() };
+        scene.current = { app, world, terrain, paths, borders, names, routes, fields, nature, buildings, people, camps, sheet, natureAt: new Map(), natureKind: new Map() };
         app.ticker.add((ticker) => {
           people.visible = world.scale.x >= 0.9; // too small to read from far away
           if (!people.visible) return;
@@ -571,6 +573,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         for (const child of layer.removeChildren()) child.destroy();
       }
       current.natureAt.clear();
+      current.natureKind.clear();
       const textures = current.sheet?.textures ?? {};
       const fallback = new Graphics();
       const marks = new Graphics();
@@ -579,6 +582,12 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         .filter((height) => height >= 0)
         .sort((a, b) => a - b);
       const snowLine = peaks.length ? peaks[Math.floor(peaks.length * 0.7)] : Infinity;
+      // The highest land outside the mountains is hill country.
+      const lowland = map.biome
+        .map((biome, index) => (["ocean", "coast", "mountain"].includes(map.biomes[biome]) ? -1 : map.elevation[index]))
+        .filter((height) => height >= 0)
+        .sort((a, b) => a - b);
+      const hillLine = lowland.length ? lowland[Math.floor(lowland.length * 0.88)] : Infinity;
       // Diagonal by diagonal, so things further south cover what is behind them.
       for (let sum = 0; sum <= map.width + map.height - 2; sum++) {
         for (let x = Math.max(0, sum - map.height + 1); x <= Math.min(sum, map.width - 1); x++) {
@@ -606,12 +615,35 @@ export function MapView({ active, map, steps, groups, places, people, land, land
             fallback.fill(shade(FALLBACK_COLOURS[name] ?? 0x555555, light));
           }
           if (water) continue;
+          const hill = map.river[index]
+            ? null
+            : biome === "mountain"
+              ? map.elevation[index] >= snowLine || tileNoise(x, y, 11) < 30
+                ? "mountain"
+                : "rocky_hill"
+              : map.elevation[index] >= hillLine
+                ? biome === "forest" || biome === "taiga"
+                  ? "forested_hill"
+                  : biome === "steppe" || biome === "desert"
+                    ? "dry_hill"
+                    : biome === "tundra" || biome === "snow"
+                      ? "snowy_hill"
+                      : "grassy_hill"
+                : null;
+          if (hill && textures[hill]) {
+            const sprite = new Sprite(textures[hill]);
+            sprite.anchor.set(0.5, 1);
+            sprite.position.set(cx, cy + TILE_H);
+            const size = SPRITE_SCALE * (hill === "mountain" ? 1 : 0.92);
+            sprite.scale.set(tileNoise(x, y, 12) < 50 ? size : -size, size);
+            current.nature.addChild(sprite);
+          }
           const deposit = map.deposit[index];
           let object: string | null = null;
           if (deposit >= 0) {
             object = DEPOSIT_SPRITES[map.deposits[deposit]?.id] ?? null;
             if (!object) marks.circle(cx, cy + TILE_H / 2, 1.6).fill(DEPOSIT_COLOURS[deposit % DEPOSIT_COLOURS.length]);
-          } else {
+          } else if (!hill) {
             const roll = tileNoise(x, y, 3);
             let edge = 0;
             for (const [candidate, chance] of NATURE[name] ?? []) {
@@ -630,6 +662,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
             sprite.scale.set(tileNoise(x, y, 5) < 50 ? size : -size, size);
             current.nature.addChild(sprite);
             current.natureAt.set(index, sprite);
+            if (deposit < 0) current.natureKind.set(index, object);
           }
         }
       }
@@ -864,6 +897,29 @@ export function MapView({ active, map, steps, groups, places, people, land, land
       for (const sprite of sprites.sort((a, b) => a.y - b.y)) current.routes.addChild(sprite);
     });
   }, [links, wars, year]);
+
+  // Woods and bushes thin out where people take from them and grow back when
+  // left alone: a tree shows full, young, or not at all, by what the tile holds.
+  useEffect(() => {
+    if (!map?.capacity) return;
+    void ready.current?.then(() => {
+      const current = scene.current;
+      if (!current) return;
+      for (const [index, kind] of current.natureKind) {
+        const resource = kind === "berry_bush" || kind === "reeds" ? "plants" : "wood";
+        const values = stocks[resource];
+        const capacity = map.capacity?.[resource]?.[map.biomes[map.biome[index]]] ?? 0;
+        const sprite = current.natureAt.get(index);
+        if (!values || values.length !== map.width * map.height || !sprite || capacity <= 0) continue;
+        const ratio = values[index] / capacity;
+        const base = (sprite as Sprite & { base?: number }).base ?? Math.abs(sprite.scale.y);
+        (sprite as Sprite & { base?: number }).base = base;
+        const size = ratio < 0.2 ? base * 0.45 : ratio < 0.55 ? base * 0.72 : base;
+        sprite.alpha = ratio < 0.12 ? 0 : 1;
+        sprite.scale.set(Math.sign(sprite.scale.x) * size, size);
+      }
+    });
+  }, [map, stocks]);
 
   // Fields: the tiles where people work the soil this month.
   useEffect(() => {

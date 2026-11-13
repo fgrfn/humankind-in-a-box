@@ -8,8 +8,8 @@
    "frame": {
     "h": 46,
     "w": 96,
-    "x": 100,
-    "y": 113
+    "x": 394,
+    "y": 146
    },
    "sourceSize": {
     "h": 46,
@@ -30,8 +30,8 @@
    "frame": {
     "h": 65,
     "w": 96,
-    "x": 296,
-    "y": 328
+    "x": 100,
+    "y": 419
    },
    "sourceSize": {
     "h": 65,
@@ -52,8 +52,8 @@
    "frame": {
     "h": 80,
     "w": 96,
-    "x": 100,
-    "y": 468
+    "x": 394,
+    "y": 489
    },
    "sourceSize": {
     "h": 80,
@@ -74,8 +74,8 @@
    "frame": {
     "h": 66,
     "w": 96,
-    "x": 2,
-    "y": 395
+    "x": 296,
+    "y": 419
    },
    "sourceSize": {
     "h": 66,
@@ -96,8 +96,8 @@
    "frame": {
     "h": 53,
     "w": 96,
-    "x": 296,
-    "y": 213
+    "x": 100,
+    "y": 296
    },
    "sourceSize": {
     "h": 53,
@@ -118,8 +118,8 @@
    "frame": {
     "h": 53,
     "w": 96,
-    "x": 394,
-    "y": 213
+    "x": 198,
+    "y": 296
    },
    "sourceSize": {
     "h": 53,
@@ -140,8 +140,8 @@
    "frame": {
     "h": 41,
     "w": 96,
-    "x": 394,
-    "y": 70
+    "x": 2,
+    "y": 146
    },
    "sourceSize": {
     "h": 41,
@@ -162,8 +162,8 @@
    "frame": {
     "h": 57,
     "w": 96,
-    "x": 198,
-    "y": 268
+    "x": 2,
+    "y": 354
    },
    "sourceSize": {
     "h": 57,
@@ -185,7 +185,7 @@
     "h": 35,
     "w": 96,
     "x": 2,
-    "y": 70
+    "y": 104
    },
    "sourceSize": {
     "h": 35,
@@ -193,6 +193,28 @@
    },
    "spriteSourceSize": {
     "h": 35,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "cliff": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 32,
+    "w": 96,
+    "x": 296,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 32,
     "w": 96,
     "x": 0,
     "y": 0
@@ -206,8 +228,8 @@
    "frame": {
     "h": 65,
     "w": 96,
-    "x": 394,
-    "y": 328
+    "x": 198,
+    "y": 419
    },
    "sourceSize": {
     "h": 65,
@@ -228,8 +250,8 @@
    "frame": {
     "h": 46,
     "w": 96,
-    "x": 198,
-    "y": 113
+    "x": 2,
+    "y": 194
    },
    "sourceSize": {
     "h": 46,
@@ -250,8 +272,8 @@
    "frame": {
     "h": 74,
     "w": 96,
-    "x": 2,
-    "y": 468
+    "x": 296,
+    "y": 489
    },
    "sourceSize": {
     "h": 74,
@@ -308,6 +330,28 @@
     "y": 0
    }
   },
+  "dry_hill": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 31,
+    "w": 96,
+    "x": 2,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 31,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 31,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "drying_rack": {
    "anchor": {
     "x": 0.5,
@@ -316,8 +360,8 @@
    "frame": {
     "h": 53,
     "w": 96,
-    "x": 2,
-    "y": 268
+    "x": 296,
+    "y": 296
    },
    "sourceSize": {
     "h": 53,
@@ -338,8 +382,8 @@
    "frame": {
     "h": 40,
     "w": 96,
-    "x": 296,
-    "y": 70
+    "x": 394,
+    "y": 104
    },
    "sourceSize": {
     "h": 40,
@@ -360,8 +404,8 @@
    "frame": {
     "h": 37,
     "w": 96,
-    "x": 198,
-    "y": 70
+    "x": 296,
+    "y": 104
    },
    "sourceSize": {
     "h": 37,
@@ -382,8 +426,8 @@
    "frame": {
     "h": 51,
     "w": 96,
-    "x": 2,
-    "y": 213
+    "x": 296,
+    "y": 243
    },
    "sourceSize": {
     "h": 51,
@@ -426,8 +470,8 @@
    "frame": {
     "h": 46,
     "w": 96,
-    "x": 296,
-    "y": 113
+    "x": 100,
+    "y": 194
    },
    "sourceSize": {
     "h": 46,
@@ -462,6 +506,28 @@
     "y": 0
    }
   },
+  "forested_hill": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 43,
+    "w": 96,
+    "x": 198,
+    "y": 146
+   },
+   "sourceSize": {
+    "h": 43,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 43,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "gatherer": {
    "anchor": {
     "x": 0.5,
@@ -470,8 +536,8 @@
    "frame": {
     "h": 47,
     "w": 96,
-    "x": 2,
-    "y": 161
+    "x": 296,
+    "y": 194
    },
    "sourceSize": {
     "h": 47,
@@ -492,8 +558,8 @@
    "frame": {
     "h": 69,
     "w": 96,
-    "x": 198,
-    "y": 395
+    "x": 2,
+    "y": 489
    },
    "sourceSize": {
     "h": 69,
@@ -528,6 +594,28 @@
     "y": 0
    }
   },
+  "grassy_hill": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 31,
+    "w": 96,
+    "x": 100,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 31,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 31,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "hunter": {
    "anchor": {
     "x": 0.5,
@@ -536,8 +624,8 @@
    "frame": {
     "h": 48,
     "w": 96,
-    "x": 198,
-    "y": 161
+    "x": 2,
+    "y": 243
    },
    "sourceSize": {
     "h": 48,
@@ -558,8 +646,8 @@
    "frame": {
     "h": 68,
     "w": 96,
-    "x": 100,
-    "y": 395
+    "x": 394,
+    "y": 419
    },
    "sourceSize": {
     "h": 68,
@@ -602,8 +690,8 @@
    "frame": {
     "h": 71,
     "w": 96,
-    "x": 296,
-    "y": 395
+    "x": 100,
+    "y": 489
    },
    "sourceSize": {
     "h": 71,
@@ -624,8 +712,8 @@
    "frame": {
     "h": 60,
     "w": 96,
-    "x": 2,
-    "y": 328
+    "x": 296,
+    "y": 354
    },
    "sourceSize": {
     "h": 60,
@@ -646,8 +734,8 @@
    "frame": {
     "h": 47,
     "w": 96,
-    "x": 100,
-    "y": 161
+    "x": 394,
+    "y": 194
    },
    "sourceSize": {
     "h": 47,
@@ -704,6 +792,50 @@
     "y": 0
    }
   },
+  "mountain": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 43,
+    "w": 96,
+    "x": 296,
+    "y": 146
+   },
+   "sourceSize": {
+    "h": 43,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 43,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
+  "mountain_pass": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 35,
+    "w": 96,
+    "x": 100,
+    "y": 104
+   },
+   "sourceSize": {
+    "h": 35,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 35,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "mud": {
    "anchor": {
     "x": 0.5,
@@ -734,8 +866,8 @@
    "frame": {
     "h": 80,
     "w": 96,
-    "x": 198,
-    "y": 468
+    "x": 2,
+    "y": 571
    },
    "sourceSize": {
     "h": 80,
@@ -756,8 +888,8 @@
    "frame": {
     "h": 56,
     "w": 96,
-    "x": 100,
-    "y": 268
+    "x": 394,
+    "y": 296
    },
    "sourceSize": {
     "h": 56,
@@ -800,8 +932,8 @@
    "frame": {
     "h": 80,
     "w": 96,
-    "x": 296,
-    "y": 468
+    "x": 100,
+    "y": 571
    },
    "sourceSize": {
     "h": 80,
@@ -822,8 +954,8 @@
    "frame": {
     "h": 71,
     "w": 96,
-    "x": 394,
-    "y": 395
+    "x": 198,
+    "y": 489
    },
    "sourceSize": {
     "h": 71,
@@ -858,6 +990,28 @@
     "y": 0
    }
   },
+  "rocky_hill": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 32,
+    "w": 96,
+    "x": 394,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 32,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 32,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "ruin": {
    "anchor": {
     "x": 0.5,
@@ -866,8 +1020,8 @@
    "frame": {
     "h": 51,
     "w": 96,
-    "x": 100,
-    "y": 213
+    "x": 394,
+    "y": 243
    },
    "sourceSize": {
     "h": 51,
@@ -932,8 +1086,8 @@
    "frame": {
     "h": 51,
     "w": 96,
-    "x": 198,
-    "y": 213
+    "x": 2,
+    "y": 296
    },
    "sourceSize": {
     "h": 51,
@@ -954,8 +1108,8 @@
    "frame": {
     "h": 57,
     "w": 96,
-    "x": 296,
-    "y": 268
+    "x": 100,
+    "y": 354
    },
    "sourceSize": {
     "h": 57,
@@ -976,8 +1130,8 @@
    "frame": {
     "h": 63,
     "w": 96,
-    "x": 100,
-    "y": 328
+    "x": 394,
+    "y": 354
    },
    "sourceSize": {
     "h": 63,
@@ -1012,6 +1166,28 @@
     "y": 0
    }
   },
+  "snowy_hill": {
+   "anchor": {
+    "x": 0.5,
+    "y": 1.0
+   },
+   "frame": {
+    "h": 31,
+    "w": 96,
+    "x": 198,
+    "y": 70
+   },
+   "sourceSize": {
+    "h": 31,
+    "w": 96
+   },
+   "spriteSourceSize": {
+    "h": 31,
+    "w": 96,
+    "x": 0,
+    "y": 0
+   }
+  },
   "steppe": {
    "anchor": {
     "x": 0.5,
@@ -1042,8 +1218,8 @@
    "frame": {
     "h": 41,
     "w": 96,
-    "x": 2,
-    "y": 113
+    "x": 100,
+    "y": 146
    },
    "sourceSize": {
     "h": 41,
@@ -1064,8 +1240,8 @@
    "frame": {
     "h": 64,
     "w": 96,
-    "x": 198,
-    "y": 328
+    "x": 2,
+    "y": 419
    },
    "sourceSize": {
     "h": 64,
@@ -1086,8 +1262,8 @@
    "frame": {
     "h": 48,
     "w": 96,
-    "x": 296,
-    "y": 161
+    "x": 100,
+    "y": 243
    },
    "sourceSize": {
     "h": 48,
@@ -1108,8 +1284,8 @@
    "frame": {
     "h": 36,
     "w": 96,
-    "x": 100,
-    "y": 70
+    "x": 198,
+    "y": 104
    },
    "sourceSize": {
     "h": 36,
@@ -1152,8 +1328,8 @@
    "frame": {
     "h": 80,
     "w": 96,
-    "x": 394,
-    "y": 468
+    "x": 198,
+    "y": 571
    },
    "sourceSize": {
     "h": 80,
@@ -1174,8 +1350,8 @@
    "frame": {
     "h": 50,
     "w": 96,
-    "x": 394,
-    "y": 161
+    "x": 198,
+    "y": 243
    },
    "sourceSize": {
     "h": 50,
@@ -1196,8 +1372,8 @@
    "frame": {
     "h": 58,
     "w": 96,
-    "x": 394,
-    "y": 268
+    "x": 198,
+    "y": 354
    },
    "sourceSize": {
     "h": 58,
@@ -1218,8 +1394,8 @@
    "frame": {
     "h": 46,
     "w": 96,
-    "x": 394,
-    "y": 113
+    "x": 198,
+    "y": 194
    },
    "sourceSize": {
     "h": 46,
@@ -1246,11 +1422,13 @@
    "campfire": "object",
    "chieftain": "figure",
    "child": "figure",
+   "cliff": "object",
    "copper_rock": "object",
    "crop_field": "object",
    "dead_tree": "object",
    "deep_water": "terrain",
    "dry_grass": "terrain",
+   "dry_hill": "object",
    "drying_rack": "object",
    "elder": "figure",
    "fallen": "figure",
@@ -1258,9 +1436,11 @@
    "farmland": "terrain",
    "fisher": "figure",
    "forest_floor": "terrain",
+   "forested_hill": "object",
    "gatherer": "figure",
    "granary": "object",
    "grass": "terrain",
+   "grassy_hill": "object",
    "hunter": "figure",
    "hut": "object",
    "ice": "terrain",
@@ -1269,6 +1449,8 @@
    "man": "figure",
    "marsh": "terrain",
    "moss": "terrain",
+   "mountain": "object",
+   "mountain_pass": "object",
    "mud": "terrain",
    "oak": "object",
    "palisade": "object",
@@ -1276,6 +1458,7 @@
    "pine": "object",
    "reeds": "object",
    "rock": "terrain",
+   "rocky_hill": "object",
    "ruin": "object",
    "sand": "terrain",
    "shallow_water": "terrain",
@@ -1283,6 +1466,7 @@
    "site": "object",
    "smithy": "object",
    "snow": "terrain",
+   "snowy_hill": "object",
    "steppe": "terrain",
    "storage_pit": "object",
    "tent": "object",
@@ -1296,7 +1480,7 @@
   },
   "scale": "1",
   "size": {
-   "h": 550,
+   "h": 653,
    "w": 530
   },
   "tile": {

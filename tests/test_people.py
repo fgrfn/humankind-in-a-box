@@ -86,7 +86,8 @@ def test_every_discovery_can_be_explained(tmp_path: Path, settings: Settings) ->
     local = settings.data_dir / "packs" / "local"
     local.mkdir(parents=True)
     (local / "overrides.yaml").write_text(
-        "technologies.fire.base_chance_per_year: 0.2\n", encoding="utf-8"
+        "technologies.fire.base_chance_per_year: 0.2\nlife.start_technologies: []\n",
+        encoding="utf-8",
     )
     path = tmp_path / "w.sqlite"
     simulate(path, settings, 40, 9)

@@ -34,6 +34,11 @@ MANY_PEOPLES = (
 )
 TRADERS = "technologies.fire.base_chance_per_year: 0.03\nlife.trade_chance_per_year: 0.5\n"
 RULERS = EARLY_FARMERS + (
+    # The busy start of earlier versions: many clans soon, so chiefdoms have neighbours.
+    "life.start_peoples: 4\n"
+    "life.start_families: 6\n"
+    "life.clan_split_adults: 16\n"
+    "life.clan_split_chance_per_year: 0.25\n"
     "life.realm_min_adults: 4\n"
     "life.realm_found_chance_per_year: 0.3\n"
     "life.realm_join_chance_per_year: 0.5\n"
@@ -209,6 +214,8 @@ def test_strangers_gather_less_on_held_land(settings: Settings) -> None:
         society = world.society
         assert society is not None
         clan = next(iter(society.clans.values()))
+        for stock in world.stocks.values():
+            stock //= 3  # scarce land, so what may be taken is what limits
         if foreign:
             society.land_people[:] = clan.culture + 1
         clan.food = 0
