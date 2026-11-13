@@ -147,7 +147,7 @@ main { min-height: 0; position: relative; overflow: hidden; }
 .clans-page { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 32px; align-items: start; }
 .clans { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .clans button {
-  display: grid; grid-template-columns: 1fr auto; gap: 0 12px; width: 100%; text-align: left;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px; width: 100%; text-align: left;
   background: none; border: 0; border-bottom: 1px solid var(--line); border-left: 2px solid transparent; padding: 9px 8px 9px 10px; min-height: 48px;
 }
 .clans button:hover { background: var(--panel); }
@@ -357,3 +357,15 @@ button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 
 .peoples .ways { font-style: italic; }
 .gift { margin: -2px 0 8px; font: 600 15px/1.3 var(--ui); color: var(--ochre); }
+
+/* Lands and their villages: the land's row heads a short, indented list. */
+.clans.lands { border-top: 0; }
+.clans .land { border-top: 1px solid var(--line); }
+.clans .land-head { border-bottom: 1px solid var(--line); background: var(--panel); }
+.clans .land-head .clan-name { display: flex; align-items: center; gap: 6px; font-size: 18px; }
+.villages { list-style: none; margin: 0 0 10px; padding: 0 0 0 14px; }
+.villages button { min-height: 40px; padding: 6px 8px 6px 10px; }
+.villages .clan-name { font-size: 15px; }
+.villages .clan-count { font-size: 16px; }
+.free-head { font: 600 15px/1.2 var(--ui); color: var(--muted); margin: 22px 0 6px; }
+.clans .land-head .chip { flex: none; }

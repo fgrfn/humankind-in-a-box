@@ -19,6 +19,8 @@ export interface Stats extends Calendar {
   peoples: number;
   trade_partnerships: number;
   realms?: number;
+  lands?: number;
+  free_clans?: number;
   wars_ongoing?: number;
   faiths?: number;
   wars_total?: number;
@@ -95,7 +97,7 @@ export interface Group {
   leader?: { id: number; name: string } | null;
   sick?: boolean;
   faith?: { id: number; name: string } | null;
-  realm?: { id: number; name: string; seat: boolean } | null;
+  realm?: { id: number; name: string; seat: boolean; land?: boolean } | null;
   stores: Store[];
   members?: { id: number; name: string; sex: "f" | "m"; age: number; children: number; activity: string; activity_text: string }[];
 }
@@ -114,6 +116,7 @@ export interface Realm {
   clans: number[];
   population: number;
   tiles: number;
+  land_year?: number | null;
 }
 
 export interface WarSide {

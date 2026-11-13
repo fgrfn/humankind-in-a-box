@@ -192,6 +192,15 @@ def create_app(
                 "WHERE world_id = ? AND dissolved IS NULL"
             ),
             "realms": one("SELECT COUNT(*) FROM realms WHERE world_id = ? AND ended IS NULL"),
+            "lands": one(
+                "SELECT COUNT(*) FROM realms "
+                "WHERE world_id = ? AND ended IS NULL AND land_since IS NOT NULL"
+            ),
+            "free_clans": one(
+                "SELECT COUNT(*) FROM groups g WHERE g.world_id = ? AND g.dissolved IS NULL "
+                "AND NOT EXISTS (SELECT 1 FROM realms r WHERE r.world_id = g.world_id "
+                "AND r.id = g.realm AND r.ended IS NULL AND r.land_since IS NOT NULL)"
+            ),
             "wars_ongoing": one("SELECT COUNT(*) FROM wars WHERE world_id = ? AND ended IS NULL"),
             "faiths": one("SELECT COUNT(*) FROM faiths WHERE world_id = ? AND ended IS NULL"),
             "wars_total": one("SELECT COUNT(*) FROM wars WHERE world_id = ?"),
@@ -728,6 +737,7 @@ def create_app(
                     "clans": members.get(row["id"], []) if standing else [],
                     "population": heads.get(row["id"], 0) if standing else 0,
                     "tiles": land.get(row["id"], 0) if standing else 0,
+                    "land_year": None if row["land_since"] is None else row["land_since"] // 360,
                 }
             )
         out.sort(key=lambda item: (item["ended_year"] is not None, -item["population"], item["id"]))
@@ -812,7 +822,7 @@ def create_app(
             (row["world_id"], row["leader"]),
         ).fetchone()
         realm = conn.execute(
-            "SELECT id, name, seat_group FROM realms "
+            "SELECT id, name, seat_group, land_since FROM realms "
             "WHERE world_id = ? AND id = ? AND ended IS NULL",
             (row["world_id"], row["realm"]),
         ).fetchone()
@@ -836,6 +846,7 @@ def create_app(
                 "id": realm["id"],
                 "name": realm["name"],
                 "seat": realm["seat_group"] == row["id"],
+                "land": realm["land_since"] is not None,
             },
             "type": row["type"],
             "y": row["y"],
