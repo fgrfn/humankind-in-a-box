@@ -1638,6 +1638,12 @@ class Society:
                     "clan_id": seat.id,
                 },
             )
+        # A village stays where it is: clans that came under the land wandering
+        # put down roots where they stand.
+        for village in villages:
+            if not village.settled:
+                self.settle(village)
+                world.count("lands.villages_rooted")
         # One store for the land: what villages hold beyond their share goes to
         # those that hold less, so no village starves while another's food spoils.
         needs = {v.id: self.monthly_need(v) for v in villages}
@@ -1869,6 +1875,8 @@ class Society:
                 continue
             other.realm = realm.id
             self.dirty_clans.add(other.id)
+            if realm.land_since is not None and not other.settled:
+                self.settle(other)  # a village of a land stays where it is
             world.count("realms.joined")
             world.emit(
                 "realm_joined",
@@ -2671,9 +2679,14 @@ class Society:
 
         hungry = self.unmet_average(clan) >= 15
         if clan.settled:
+            # A village of a land is not given up: the land's store sees it through.
             starving = self.unmet_average(clan) >= p.abandon_hunger_percent
-            if starving and world.roll(
-                "abandon_settlement", "group", clan.id, p.abandon_chance_per_year, []
+            if (
+                starving
+                and self.land_of(clan) is None
+                and world.roll(
+                    "abandon_settlement", "group", clan.id, p.abandon_chance_per_year, []
+                )
             ):
                 self.abandon_place(clan)
         elif world.tick - clan.arrived >= p.settle_years * DAYS_PER_YEAR and any(
@@ -2922,6 +2935,7 @@ class Society:
             best[area] = np.where(wins, pressure, best[area])
             owner[area] = np.where(wins, clan.id, owner[area])
         owner[world.map.water] = 0
+        self.close_lands(owner)
 
         people_of = np.zeros(self.next_clan + 1, dtype=np.int32)
         for clan_id in sorted(self.clans):
@@ -2957,6 +2971,86 @@ class Society:
                 )
         self.territory = owner
         self.land_people = land_people
+
+    def close_lands(self, owner: np.ndarray) -> None:
+        """A land is one area, not a scatter of village grounds: narrow gaps
+        between its villages' land and the open land it encloses become its own,
+        each tile going to the nearest village. No dice."""
+        height, width = owner.shape
+        water = self.world.map.water
+        realm_of = np.zeros(self.next_clan + 1, dtype=np.int32)
+        villages: dict[int, list[Clan]] = {}
+        for clan_id in sorted(self.clans):
+            clan = self.clans[clan_id]
+            land = self.land_of(clan)
+            if land is not None:
+                realm_of[clan_id] = land.id
+                villages.setdefault(land.id, []).append(clan)
+        if not villages:
+            return
+        tile_land = realm_of[owner]
+        free = (owner == 0) & ~water
+        edge = np.zeros(owner.shape, dtype=bool)
+        edge[0, :] = edge[-1, :] = edge[:, 0] = edge[:, -1] = True
+
+        def shifted(mask: np.ndarray, dy: int, dx: int) -> np.ndarray:
+            """out[y, x] = mask[y + dy, x + dx], False beyond the map."""
+            out = np.zeros_like(mask)
+            out[max(0, -dy) : height - max(0, dy), max(0, -dx) : width - max(0, dx)] = mask[
+                max(0, dy) : height - max(0, -dy), max(0, dx) : width - max(0, -dx)
+            ]
+            return out
+
+        # Narrow gaps: open land with the same land on two opposite sides.
+        filled = np.zeros(owner.shape, dtype=np.int32)  # land that takes the tile
+        for land_id in sorted(villages):
+            mine = tile_land == land_id
+            gaps = np.zeros(owner.shape, dtype=bool)
+            for dy, dx in ((0, 1), (1, 0), (1, 1), (1, -1)):
+                for step in (1, 2):
+                    gaps |= shifted(mine, dy * step, dx * step) & shifted(
+                        mine, -dy * step, -dx * step
+                    )
+            filled = np.where(free & gaps & (filled == 0), land_id, filled)
+        # Open land enclosed by one land alone (and the sea) becomes the land's.
+        flat_free = (free & (filled == 0)).ravel()
+        flat_land = tile_land.ravel()
+        flat_edge = edge.ravel()
+        seen = np.zeros(height * width, dtype=bool)
+        for start in np.flatnonzero(flat_free).tolist():
+            if seen[start]:
+                continue
+            seen[start] = True
+            component, stack = [], [start]
+            bordering: set[int] = set()
+            open_edge = False
+            while stack:
+                index = stack.pop()
+                component.append(index)
+                open_edge = open_edge or bool(flat_edge[index])
+                y, x = divmod(index, width)
+                for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+                    if not (0 <= ny < height and 0 <= nx < width):
+                        continue
+                    other = ny * width + nx
+                    if flat_free[other]:
+                        if not seen[other]:
+                            seen[other] = True
+                            stack.append(other)
+                    elif not water.flat[other]:
+                        bordering.add(int(flat_land[other]))  # 0: a free clan's ground
+            if open_edge or len(bordering) != 1 or 0 in bordering:
+                continue
+            land_id = bordering.pop()
+            filled.flat[component] = land_id
+        if not filled.any():
+            return
+        ys, xs = np.nonzero(filled)
+        for y, x in zip(ys.tolist(), xs.tolist(), strict=True):
+            own = villages[int(filled[y, x])]
+            nearest = min(own, key=lambda v: (max(abs(v.y - y), abs(v.x - x)), v.id))
+            owner[y, x] = nearest.id
+        self.world.count("territory.land_filled", len(ys))
 
     def close_enclaves(self, owner: np.ndarray, land_people: np.ndarray) -> None:
         """A people's land hangs together: no island of it inside another's.
@@ -3239,8 +3333,8 @@ class Society:
 
     def maybe_migrate(self, clan: Clan, month: int) -> None:
         world, p = self.world, self.p
-        if clan.settled:
-            return  # settled people stay until hunger makes them give the place up
+        if clan.settled or self.land_of(clan) is not None:
+            return  # settled people stay until hunger makes them give the place up; villages stay
         unmet_now = clan.unmet[-1] if clan.unmet else 0
         factors: list[tuple[str, float]] = []
         if unmet_now > 0:
