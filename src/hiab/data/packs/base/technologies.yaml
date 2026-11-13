@@ -87,7 +87,7 @@ boats:
   needs_nearby: [fish, wood]
   base_chance_per_year: 0.0002
   factors: {coastal: 2.0, crafty: 1.4}
-  effects: {harvest_percent: {fish: 40}}
+  effects: {harvest_percent: {fish: 40}, sea_reach: 4}
 sewing:
   name: {de: Nähnadel, en: Sewing needle}
   requires: [hide_clothing, cordage]
@@ -224,7 +224,7 @@ sailing:
   needs_nearby: [fish]
   base_chance_per_year: 0.0003
   factors: {coastal: 2.0, curious: 1.5}
-  effects: {harvest_percent: {fish: 30}}
+  effects: {harvest_percent: {fish: 30}, sea_reach: 16}
 horse_riding:
   name: {de: Reiten, en: Horse riding}
   requires: [herding]

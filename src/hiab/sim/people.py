@@ -221,6 +221,8 @@ class Society:
         self.ended_links: list[tuple[int, int, int]] = []  # clan, clan, end tick
         self.food_ids = world.packs.foods()
         self.campable = ~world.map.water & ~world.map.river
+        self.landmass, self.landmass_size = self.label_landmasses()
+        self.landed: set[int] = set()  # landmasses anyone has ever camped on
         self._effects: dict[int, tuple[dict[str, int], float, int, int]] = {}
         self._labour: dict[int, int] = {}
         self.gifts: dict[int, set[str]] = {}
@@ -433,6 +435,67 @@ class Society:
         # Every plain form is taken: tell it apart by who founded it.
         return f"{stem}{endings[0]} {clan.name}", meaning
 
+    def label_landmasses(self) -> tuple[np.ndarray, dict[int, int]]:
+        """Number each piece of land cut off from the others by the sea, in
+        reading order, and count its tiles. Rivers can be forded."""
+        land = ~self.world.map.water
+        height, width = land.shape
+        label = np.zeros(land.shape, dtype=np.int32)
+        sizes: dict[int, int] = {}
+        flat_land = land.ravel().tolist()
+        flat = label.ravel()
+        for start in range(height * width):
+            if not flat_land[start] or flat[start]:
+                continue
+            number = len(sizes) + 1
+            flat[start] = number
+            stack = [start]
+            count = 0
+            while stack:
+                index = stack.pop()
+                count += 1
+                y, x = divmod(index, width)
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        ny, nx = y + dy, x + dx
+                        if 0 <= ny < height and 0 <= nx < width:
+                            other = ny * width + nx
+                            if flat_land[other] and not flat[other]:
+                                flat[other] = number
+                                stack.append(other)
+            sizes[number] = count
+        return flat.reshape(land.shape), sizes
+
+    def sea_reach(self, clan: Clan) -> int:
+        """How far over open water the clan can take its people and goods."""
+        packs = self.world.packs
+        return max(
+            (
+                packs.technologies[t].effects.sea_reach
+                for t in sorted(clan.techs)
+                if t in packs.technologies
+            ),
+            default=0,
+        )
+
+    def arrive(self, clan: Clan, crossed: bool) -> None:
+        """Note where the clan now camps; the first landing on a new land is history."""
+        mass = int(self.landmass[clan.y, clan.x])
+        if not mass or mass in self.landed:
+            return
+        self.landed.add(mass)
+        if not crossed:
+            return
+        self.world.count("seafaring.new_lands")
+        self.world.emit(
+            "new_land_reached",
+            data={
+                "clan": clan.name,
+                "clan_id": clan.id,
+                "tiles": self.landmass_size.get(mass, 0),
+            },
+        )
+
     def add_clan(
         self, y: int, x: int, parent: int, language: dict[str, str], culture: int = 0
     ) -> Clan:
@@ -451,6 +514,11 @@ class Society:
         self.next_clan += 1
         self.clans[clan.id] = clan
         self.dirty_clans.add(clan.id)
+        parent_clan = self.clans.get(parent)
+        crossed = parent_clan is not None and int(self.landmass[y, x]) != int(
+            self.landmass[parent_clan.y, parent_clan.x]
+        )
+        self.arrive(clan, crossed)
         return clan
 
     def found(self) -> None:
@@ -3087,7 +3155,10 @@ class Society:
         """Best camp tile within reach: (score, y, x). The current tile is not a candidate."""
         world, p = self.world, self.p
         reach = p.move_radius
-        outer = self.window(clan.y, clan.x, reach + p.forage_radius)  # judged as a wanderer
+        # Without boats a clan keeps to its own land; with them it can cross to
+        # other land as far as its boats carry, setting out from the shore.
+        sea = self.sea_reach(clan) if self.clan_has_fact(clan, "coastal", []) else 0
+        outer = self.window(clan.y, clan.x, max(reach, sea) + p.forage_radius)
         harvest_percent, _m, _s, _t = self.effects(clan)
         value = np.zeros(world.stocks[self.food_ids[0]][outer].shape, dtype=np.int64)
         for rid in self.food_ids:
@@ -3125,7 +3196,12 @@ class Society:
         xs = np.arange(shape[1])[None, :] + x_start
         distance = np.maximum(np.abs(ys - clan.y), np.abs(xs - clan.x))
         score = score - score * distance * 3 // 100
-        allowed = (distance >= min_distance) & (distance <= reach) & self.campable[outer]
+        home = self.landmass[outer] == self.landmass[clan.y, clan.x]
+        allowed = (
+            (distance >= min_distance)
+            & self.campable[outer]
+            & ((home & (distance <= reach)) | (~home & (distance <= sea)))
+        )
         if not bool(allowed.any()):
             return None
         score = np.where(allowed, score, -1)
@@ -3205,7 +3281,11 @@ class Society:
                 "distance": distance,
             },
         )
+        crossed = int(self.landmass[y, x]) != int(self.landmass[clan.y, clan.x])
         clan.y, clan.x, clan.arrived = y, x, world.tick
+        if crossed:
+            world.count("seafaring.crossings")
+        self.arrive(clan, crossed)
         # Work was given out for the old camp; at the new one it is given out next month.
         for person_id in clan.members:
             person = self.persons[person_id]
@@ -3350,6 +3430,7 @@ class Society:
                 for f in (self.faiths[fid] for fid in sorted(self.faiths))
             ],
             "gifts": {str(k): sorted(self.gifts[k]) for k in sorted(self.gifts)},
+            "landed": sorted(self.landed),
             "wars": [
                 {
                     "id": w.id,
@@ -3521,6 +3602,10 @@ class Society:
         self._labour = {}
         # The gifts as last noted, so a resumed world rolls exactly as one that ran on.
         self.gifts = {int(k): set(v) for k, v in state.get("gifts", {}).items()}
+        if "landed" in state:
+            self.landed = set(state["landed"])
+        else:  # worlds saved before seafaring: where clans camp now
+            self.landed = {int(self.landmass[c.y, c.x]) for c in self.clans.values()} - {0}
         self.clear_dirty()
         if self.clans and not self.cultures:
             # A world from before peoples existed: everybody alive is one people,

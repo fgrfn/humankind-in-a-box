@@ -393,6 +393,19 @@ each at most as wide as its diamond:
 5 a tame horse with a simple rope halter. 6 a herder with a long crook stick and a cloak, walking.
 7 a raider on horseback with a spear. 8 a small round pen of woven wattle fence, empty inside.
 (names: sheep, goats, cow, dog, tame_horse, herder, raider, pen)
+
+BOATS 1, late stone age to bronze age, same scale as the huts and figures in the reference.
+Items 1 to 5 float on a small isometric diamond of shallow blue water (2:1 ratio) instead of grass,
+items 6 to 8 stand on a bare trodden-earth ground diamond; each at most as wide as its diamond:
+1 an empty dugout canoe carved from a log, seen from the side, pointing right.
+2 a fisher kneeling in a dugout canoe holding a fishing spear.
+3 a small raft of lashed logs with a bundle and two people, pointing right.
+4 a sailing boat of planks with one square sail of woven cloth and two rowers, pointing right.
+5 a fishing net hung between two poles standing in the water.
+6 a wooden landing stage of planks on posts at the water's edge.
+7 a dugout canoe pulled up on the shore with a paddle beside it.
+8 a boat builder's place: a half-carved log on trestles with a stone adze.
+(names: canoe, canoe_fisher, raft, sailboat, fish_net, jetty, canoe_shore, boat_builder)
 ```
 
 ## 16. Bauplan

@@ -119,6 +119,7 @@ class TechEffects(_Model):
     labour_percent: int = Field(0, ge=0, le=1000)  # more food one worker brings in
     keeps_herds: bool = False  # the clan can keep tame animals that graze and give food
     raid_percent: int = Field(0, ge=0, le=1000)  # added to the chance of going raiding
+    sea_reach: int = Field(0, ge=0, le=1000)  # tiles of open water a clan can cross
 
 
 class Technology(_Model):

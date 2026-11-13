@@ -39,3 +39,6 @@ sheets:
   - file: sheets/animals-2.png
     kind: figure
     cells: [sheep, goats, cow, dog, tame_horse, herder, raider, pen]
+  - file: sheets/boats-1.png
+    kind: object
+    cells: [canoe, canoe_fisher, raft, sailboat, fish_net, jetty, canoe_shore, boat_builder]

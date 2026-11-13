@@ -66,6 +66,27 @@ const BUILDING_SPRITES: Record<string, string> = {
 };
 
 // A fixed number per tile, so the same world always looks the same.
+// The nearest sea tile within two tiles of a camp, if any.
+function nearestSea(map: WorldMap, x: number, y: number): [number, number] | null {
+  let best: [number, number] | null = null;
+  let gap = Infinity;
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= map.width || ny >= map.height) continue;
+      const biome = map.biomes[map.biome[ny * map.width + nx]];
+      if (biome !== "ocean" && biome !== "coast") continue;
+      const d = dx * dx + dy * dy;
+      if (d < gap) {
+        gap = d;
+        best = [nx, ny];
+      }
+    }
+  }
+  return best;
+}
+
 function tileNoise(x: number, y: number, salt: number): number {
   let h = (x * 374761393 + y * 668265263 + salt * 2147483647) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -242,7 +263,11 @@ class Crowd {
       if (from === undefined || from === index) break;
       index = from;
     }
-    return tiles.reverse();
+    tiles.reverse();
+    // With boats, fishers paddle out from the shore to the fish.
+    const [ex, ey] = tiles[tiles.length - 1];
+    if (band.techs.has("boats") && !this.dry(tx, ty) && Math.max(Math.abs(tx - ex), Math.abs(ty - ey)) <= 3) tiles.push([tx, ty]);
+    return tiles;
   }
 
   // To war the way is longer than to work: straight towards the field, tile by
@@ -259,7 +284,10 @@ class Crowd {
     return tiles;
   }
 
+  private sheet: Spritesheet | null = null;
+
   sync(layer: Container, sheet: Spritesheet, map: WorldMap, groups: Group[], people: Human[]): void {
+    this.sheet = sheet;
     if (this.map !== map) {
       for (const walker of this.walkers.values()) walker.sprite.destroy();
       this.walkers.clear();
@@ -405,6 +433,15 @@ class Crowd {
       const spread = walker.task === "rest" ? 1 : 0.5;
       walker.sprite.position.set(sx + walker.dx * spread, sy + TILE_H / 2 + 2 + walker.dy * spread - lift);
       walker.sprite.zIndex = sy + walker.dy;
+      // Who fishes from a boat sits in a canoe once on the water.
+      if (walker.person.activity === "fish" && this.sheet) {
+        const afloat = !this.dry(Math.round(fx), Math.round(fy)) && band.techs.has("boats");
+        const texture = afloat ? this.sheet.textures.canoe_fisher : this.sheet.textures.fisher;
+        if (texture && walker.sprite.texture !== texture) {
+          walker.sprite.texture = texture;
+          walker.sprite.scale.set(afloat ? FIGURE_SCALE * 1.3 : FIGURE_SCALE);
+        }
+      }
     }
   }
 }
@@ -1155,6 +1192,24 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           sprite.scale.set(flip ? -size : size, size);
           lodge.addChildAt(sprite, 0);
         };
+        if (group.technologies.some((tech) => tech.id === "boats")) {
+          // A boat people's camp: a canoe pulled up, a boat builder where they
+          // have settled, a landing stage and a sailing boat for seafarers, nets.
+          const knows = (id: string) => group.technologies.some((tech) => tech.id === id);
+          const shore = map ? nearestSea(map, group.x, group.y) : null;
+          if (shore) {
+            const [ox, oy] = shore;
+            const [scx, scy] = project(group.x, group.y);
+            const [wx, wy] = project(ox, oy);
+            const dx = wx - scx;
+            const dy = wy - scy;
+            if (group.settled) extra("jetty", dx * 0.55, dy * 0.55 + TILE_H * 0.6, SPRITE_SCALE * 0.55);
+            extra(knows("sailing") ? "sailboat" : "canoe", dx * 0.85, dy * 0.85 + TILE_H * 0.7, SPRITE_SCALE * 0.5, dx < 0);
+            if (knows("nets")) extra("fish_net", dx * 1.05 + TILE_W * 0.3, dy * 1.05 + TILE_H * 0.6, SPRITE_SCALE * 0.45);
+          }
+          extra("canoe_shore", TILE_W * 0.55, TILE_H * 0.9, SPRITE_SCALE * 0.45);
+          if (group.settled) extra("boat_builder", TILE_W * 0.9, TILE_H * 0.4, SPRITE_SCALE * 0.5);
+        }
         if (group.herd) {
           // The herd beside the camp: more kinds of animal as it grows, a pen
           // where people have settled. Shown once the animal pictures exist.
