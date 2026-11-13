@@ -21,6 +21,8 @@ def render_event(packs: PackSet, event_type: str, data: dict[str, Any], language
     building = packs.buildings.get(str(data.get("building")))
     if building is not None:
         values["building"] = getattr(building.name, language)
+    if packs.life is not None and str(data.get("aspect")) in packs.life.faith_aspects:
+        values["aspect"] = getattr(packs.life.faith_aspects[str(data["aspect"])], language)
     text: str = getattr(definition.text, language)
     for key in sorted(values):
         text = text.replace("{" + key + "}", values[key])

@@ -42,6 +42,15 @@ export function realmColour(id: number): number {
   return DISTINCT[(Math.max(1, id) * 5) % DISTINCT.length];
 }
 
+// Faiths are shown alone too; they step seven places so neighbours differ.
+export function faithColour(id: number): number {
+  return DISTINCT[(Math.max(1, id) * 7 + 3) % DISTINCT.length];
+}
+
+export function faithCss(id: number): string {
+  return `#${faithColour(id).toString(16).padStart(6, "0")}`;
+}
+
 export function realmCss(id: number): string {
   return `#${realmColour(id).toString(16).padStart(6, "0")}`;
 }

@@ -275,6 +275,20 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE groups ADD COLUMN sick_until INTEGER NOT NULL DEFAULT 0;
     """,
+    """
+    CREATE TABLE faiths (
+        world_id INTEGER NOT NULL,
+        id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        aspect TEXT NOT NULL,
+        founded INTEGER NOT NULL,
+        ended INTEGER,
+        origin_group INTEGER NOT NULL,
+        people INTEGER NOT NULL,
+        PRIMARY KEY (world_id, id)
+    ) WITHOUT ROWID;
+    ALTER TABLE groups ADD COLUMN faith INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -298,6 +312,7 @@ CONTENT_TABLES: dict[str, str] = {
     "trade_links": "world_id, group_a, group_b, since",
     "realms": "world_id, id",
     "wars": "world_id, id",
+    "faiths": "world_id, id",
 }
 
 
@@ -540,6 +555,7 @@ class Store:
                     clan.leader,
                     clan.realm,
                     clan.sick_until,
+                    clan.faith,
                 )
             )
         self.conn.executemany(
@@ -570,7 +586,14 @@ class Store:
             ],
         )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
+            "INSERT OR REPLACE INTO groups VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", clan_rows
+        )
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO faiths VALUES (?,?,?,?,?,?,?,?)",
+            [
+                (world.id, f.id, f.name, f.aspect, f.founded, f.ended, f.origin, f.people)
+                for f in (society.faiths[fid] for fid in sorted(society.dirty_faiths))
+            ],
         )
         self.conn.executemany(
             "INSERT OR REPLACE INTO wars VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
