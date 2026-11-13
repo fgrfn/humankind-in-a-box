@@ -327,7 +327,7 @@ Alle Sprites einschließlich Gelände werden per Bildgenerator entworfen (so mac
 
 `uv run python tools/build_atlas.py`, danach das Frontend neu bauen.
 
-**Erprobt (fünf Bögen, November 2026):** Acht Bilder je Bogen in zwei Reihen zu vier funktionieren zuverlässig, sechzehn nicht. Transparenter Hintergrund funktioniert und ist besser als Magenta. Der Generator hält kein exaktes Pixelraster ein, deshalb misst das Skript und verlässt sich auf keine festen Zellgrößen. Objekte kommen immer auf einem Bodenstück, das ist in Ordnung, das Skript entfernt es.
+**Erprobt (sieben Bögen, November 2026):** Acht Bilder je Bogen in zwei Reihen zu vier funktionieren zuverlässig, sechzehn nicht. Transparenter Hintergrund funktioniert und ist besser als Magenta. Der Generator hält kein exaktes Pixelraster ein, deshalb misst das Skript und verlässt sich auf keine festen Zellgrößen. Objekte kommen immer auf einem Bodenstück, das ist in Ordnung, das Skript entfernt es.
 
 **Stil-Prompt (immer voranstellen, einen freigegebenen Bogen als Referenzbild anhängen):**
 
@@ -357,6 +357,25 @@ BUILDINGS 1, stone age, each on a bare trodden-earth ground diamond, each at mos
 PEOPLE 1, stone age, tiny figures about a quarter as tall as an oak tree in the reference, simple readable silhouettes,
 each standing on a grass ground diamond: 1 woman in hides. 2 man in hides. 3 child. 4 elder with staff.
 5 hunter with spear. 6 gatherer with basket. 7 fisher with a fish on a line. 8 group of three people walking with bundles.
+
+PEOPLE 2, late stone age to bronze age, tiny figures exactly as tall as the figures in the reference,
+simple readable silhouettes, each standing on a grass ground diamond, all facing right:
+1 warrior in hides with a long spear held ready. 2 warrior with a round wooden shield and a club.
+3 archer drawing a bow. 4 bronze age warrior with a bronze helmet, a short sword and a shield.
+5 chieftain with a feather headdress, a fur cloak and a decorated staff.
+6 fallen warrior lying on his back on the ground, spear beside him, no blood.
+7 farmer with a hoe over the shoulder. 8 trader carrying a large bundle on his back and a walking stick.
+
+BUILDINGS 2, late stone age to bronze age, each on a bare trodden-earth ground diamond,
+each at most as wide as its diamond, same scale as the huts in the reference:
+1 granary: small round clay storehouse raised on wooden stilts, thatched cone roof.
+2 well: round stone well with a wooden frame, rope and bucket.
+3 chieftain's longhouse: long timber hall with a high thatched roof and carved gable posts, one and a half times as wide as a hut.
+4 palisade section: a short straight row of sharpened upright logs.
+5 burial mound: low grassy mound with a single standing stone on top.
+6 war banner: tall wooden pole with a plain cloth banner and a bundle of feathers, planted in the ground.
+7 bronze smithy: small open workshop with a clay furnace glowing orange, an anvil stone and a bellows.
+8 crop field: small fenced patch of ripe golden grain in rows.
 
 ANIMALS 1, each on a grass ground diamond: deer, boar, wolf, bear, mammoth, aurochs, wild horse, bird of prey,
 each in side view facing right. (Second sheet later: sheep, goat, cow, dog, horse, chicken, rabbit, fish.)

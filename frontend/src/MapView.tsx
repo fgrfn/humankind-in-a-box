@@ -61,8 +61,8 @@ const BUILDING_SPRITES: Record<string, string> = {
   drying_rack: "drying_rack",
   storage_pit: "storage_pit",
   kiln: "kiln",
-  granary: "hut",
-  well: "storage_pit",
+  granary: "granary",
+  well: "well",
 };
 
 // A fixed number per tile, so the same world always looks the same.
@@ -128,6 +128,8 @@ interface Band {
   x: number;
   y: number;
   spear: boolean;
+  techs: Set<string>;
+  leader: number;
   reach: Map<number, number>; // tile index -> tile it was reached from
   near: number[];
 }
@@ -139,9 +141,16 @@ const FIGURE_SCALE = SPRITE_SCALE * 0.5;
 
 function figureFor(person: Human, band: Band): string {
   if (person.age < 16) return "child";
-  if (person.age >= 55) return "elder";
   const kind = person.activity.split(":")[0];
-  if (kind === "fight") return "hunter"; // the figure with a spear
+  if (kind === "fight") {
+    // What they carry follows what their clan knows; who carries what is fixed per person.
+    if (band.techs.has("bronze")) return "bronze_warrior";
+    if (band.techs.has("bow") && person.id % 3 === 0) return "archer";
+    return person.id % 2 === 0 ? "shield_warrior" : "warrior";
+  }
+  if (person.id === band.leader) return "chieftain";
+  if (person.age >= 55) return "elder";
+  if (kind === "soil") return "farmer";
   if (kind === "fish") return "fisher";
   if (kind === "game" && band.spear) return "hunter";
   if (kind === "plants" && person.sex === "f") return "gatherer";
@@ -236,9 +245,11 @@ class Crowd {
     const bands = new Map<number, Band>();
     for (const group of groups) {
       const old = this.bands.get(group.id);
-      const band: Band = old ?? { x: group.x, y: group.y, spear: false, reach: new Map(), near: [] };
+      const band: Band = old ?? { x: group.x, y: group.y, spear: false, techs: new Set(), leader: 0, reach: new Map(), near: [] };
       if (old && (old.x !== group.x || old.y !== group.y)) moved.add(group.id);
-      band.spear = group.technologies.some((tech) => tech.id === "spear");
+      band.techs = new Set(group.technologies.map((tech) => tech.id));
+      band.spear = band.techs.has("spear");
+      band.leader = group.leader?.id ?? 0;
       if (!old || moved.has(group.id)) {
         band.x = group.x;
         band.y = group.y;
@@ -254,7 +265,6 @@ class Crowd {
       alive.add(person.id);
       let walker = this.walkers.get(person.id);
       const texture = sheet.textures[figureFor(person, band)] ?? sheet.textures.man;
-      const tint = person.activity.startsWith("fight:") ? 0xff9a8a : 0xffffff;
       if (!walker) {
         const sprite = new Sprite(texture);
         sprite.anchor.set(0.5, 1);
@@ -265,13 +275,11 @@ class Crowd {
         sprite.on("pointertap", () => {
           if (!this.wasDragged()) this.onTap(id);
         });
-        sprite.tint = tint;
         layer.addChild(sprite);
         walker = { sprite, person, clan: person.clan, path: [[band.x, band.y]], leg: 0, along: 0, task: "rest", wait: Math.random() * 20, clock: Math.random() * 10, dx: (Math.random() - 0.5) * 12, dy: (Math.random() - 0.5) * 5 };
         this.walkers.set(person.id, walker);
       } else {
         if (walker.sprite.texture !== texture) walker.sprite.texture = texture;
-        walker.sprite.tint = tint;
         if (walker.clan !== person.clan || moved.has(person.clan)) {
           // A new camp, or a new clan: walk straight there from wherever one stands.
           const [fx, fy] = this.where(walker);
@@ -774,6 +782,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
       // War: a red line from each seat to the field where the two sides meet,
       // crossed marks on the field, graves of the fallen that fade over ten
       // years, and the winner's banner where a chiefdom was conquered.
+      const sprites: Sprite[] = [];
       const point = (x: number, y: number): [number, number] => {
         const [px, top] = project(x, y);
         return [px, top + TILE_H / 2];
@@ -793,26 +802,43 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           g.moveTo(fx - 7, fy - 7).lineTo(fx + 7, fy + 7).moveTo(fx + 7, fy - 7).lineTo(fx - 7, fy + 7).stroke({ color: 0xe8453c, width: 2.6, cap: "round" });
         }
         const since = war.last_battle_year === null ? Infinity : year - war.last_battle_year;
+        const textures = current.sheet?.textures ?? {};
+        const place = (name: string, x: number, y: number, alpha: number, flip: boolean, size = SPRITE_SCALE * 0.6) => {
+          const texture = textures[name];
+          if (!texture) return false;
+          const sprite = new Sprite(texture);
+          sprite.anchor.set(0.5, 1);
+          sprite.position.set(x, y);
+          sprite.scale.set(flip ? -size : size, size);
+          sprite.alpha = alpha;
+          sprites.push(sprite);
+          return true;
+        };
         if (since <= 10 && war.last_fallen > 0) {
           const fade = 1 - since / 11;
-          const count = Math.min(30, war.fallen);
+          // The year of the battle the fallen still lie on the field; after that, mounds.
+          const lying = since < 1;
+          const count = lying ? Math.min(12, war.last_fallen) : Math.min(4, Math.ceil(war.fallen / 8));
           for (let n = 0; n < count; n++) {
             const ox = (tileNoise(war.id, n, 7) - 50) / 50;
             const oy = (tileNoise(n, war.id, 8) - 50) / 50;
-            const gx = fx + ox * TILE_W * 1.1;
-            const gy = fy + oy * TILE_H * 1.1 + 4;
+            const gx = fx + ox * TILE_W * (lying ? 1.1 : 0.8);
+            const gy = fy + oy * TILE_H * (lying ? 1.1 : 0.8) + 4;
+            if (place(lying ? "fallen" : "burial_mound", gx, gy, fade, tileNoise(n, war.id, 9) < 50, SPRITE_SCALE * (lying ? 0.5 : 0.62))) continue;
             g.ellipse(gx, gy, 4.4, 2.2).fill({ color: 0x5b4632, alpha: 0.9 * fade });
-            g.moveTo(gx, gy - 1).lineTo(gx, gy - 8.5).moveTo(gx - 2.6, gy - 6).lineTo(gx + 2.6, gy - 6).stroke({ color: 0x10242d, width: 2.6, alpha: 0.7 * fade, cap: "round" });
-            g.moveTo(gx, gy - 1).lineTo(gx, gy - 8.5).moveTo(gx - 2.6, gy - 6).lineTo(gx + 2.6, gy - 6).stroke({ color: 0xf2efe6, width: 1.2, alpha: fade, cap: "round" });
           }
         }
         if (war.outcome === "conquest" && war.winner_id !== null && war.ended_year !== null && year - war.ended_year <= 5) {
           const fade = 1 - (year - war.ended_year) / 6;
-          g.moveTo(fx, fy + 2).lineTo(fx, fy - 18).stroke({ color: 0x3a2a1a, width: 1.4, alpha: fade });
-          g.poly([fx, fy - 18, fx + 11, fy - 14.5, fx, fy - 11]).fill({ color: realmColour(war.winner_id), alpha: fade }).stroke({ color: 0x10242d, width: 0.8, alpha: fade });
+          if (!place("war_banner", fx, fy + 6, fade, false, SPRITE_SCALE * 0.75)) {
+            g.moveTo(fx, fy + 2).lineTo(fx, fy - 18).stroke({ color: 0x3a2a1a, width: 1.4, alpha: fade });
+          }
+          // A pennant in the winner's colour, so one can tell whose it is.
+          g.poly([fx + 1, fy - 26, fx + 10, fy - 23, fx + 1, fy - 20]).fill({ color: realmColour(war.winner_id), alpha: fade }).stroke({ color: 0x10242d, width: 0.8, alpha: fade });
         }
       }
       current.routes.addChild(g);
+      for (const sprite of sprites.sort((a, b) => a.y - b.y)) current.routes.addChild(sprite);
     });
   }, [links, wars, year]);
 
@@ -822,6 +848,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
     void ready.current?.then(() => {
       const current = scene.current;
       const texture = current?.sheet?.textures.farmland;
+      const crop = current?.sheet?.textures.crop_field;
       if (!current || !texture) return;
       for (const child of current.fields.removeChildren()) child.destroy();
       const tilled = new Set<number>();
@@ -838,6 +865,13 @@ export function MapView({ active, map, steps, groups, places, people, land, land
         tile.position.set(cx, cy + TILE_H / 2);
         tile.scale.set(SPRITE_SCALE);
         current.fields.addChild(tile);
+        if (crop) {
+          const field = new Sprite(crop);
+          field.anchor.set(0.5, 1);
+          field.position.set(cx, cy + TILE_H);
+          field.scale.set(SPRITE_SCALE * 0.8);
+          current.fields.addChild(field);
+        }
         const grown = current.natureAt.get(index);
         if (grown) grown.visible = false;
       }
@@ -901,6 +935,29 @@ export function MapView({ active, map, steps, groups, places, people, land, land
           g.poly([-6, 0, 0, -10, 6, 0]).fill(0xe2c98a);
           g.poly([-1.5, 0, 0, -4, 1.5, 0]).fill(0x5a4a34);
         }
+        // The seat of a chiefdom has the chieftain's longhouse, fenced while at war;
+        // a settlement that works metal has a smithy.
+        const sheetTextures = current.sheet?.textures ?? {};
+        const extra = (name: string, x: number, y: number, size: number, flip = false) => {
+          const texture = sheetTextures[name];
+          if (!texture) return;
+          const sprite = new Sprite(texture);
+          sprite.anchor.set(0.5, 1);
+          sprite.position.set(x, y);
+          sprite.scale.set(flip ? -size : size, size);
+          marker.addChildAt(sprite, 0);
+        };
+        if (group.settled && group.technologies.some((tech) => tech.id === "copper_working")) {
+          extra("smithy", -TILE_W * 0.55, TILE_H * 0.1, SPRITE_SCALE * 0.7);
+        }
+        if (group.realm?.seat) {
+          extra("longhouse", TILE_W * 0.6, TILE_H * 0.15, SPRITE_SCALE * 0.85);
+          const atWar = wars.some((war) => war.ended_year === null && (war.attacker.id === group.realm!.id || war.defender.id === group.realm!.id));
+          if (atWar) {
+            extra("palisade", -TILE_W * 0.35, TILE_H * 0.85, SPRITE_SCALE * 0.6);
+            extra("palisade", TILE_W * 0.35, TILE_H * 0.85, SPRITE_SCALE * 0.6, true);
+          }
+        }
         marker.addChild(g);
         const label = new Text({
           text: `${group.settled && group.place ? group.place : group.name} ${group.population}`,
@@ -926,7 +983,7 @@ export function MapView({ active, map, steps, groups, places, people, land, land
       }
       fitLabels(layer, current.world.scale.x);
     });
-  }, [groups, selected]);
+  }, [groups, selected, wars]);
 
   // The people themselves: figures that walk out from the camp, work and come back.
   useEffect(() => {
