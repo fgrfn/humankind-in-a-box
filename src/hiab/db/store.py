@@ -268,6 +268,10 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (world_id, id)
     ) WITHOUT ROWID;
     """,
+    """
+    ALTER TABLE cultures ADD COLUMN ways TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE persons ADD COLUMN gift TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 # Tables compared by ``verify``, each with the order that makes rows comparable.
@@ -495,10 +499,11 @@ class Store:
                     person.target_y,
                     person.target_x,
                     _json(dict(sorted(person.work.items()))),
+                    person.gift,
                 )
             )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             person_rows,
         )
         clan_rows = []
@@ -543,7 +548,7 @@ class Store:
             [(tick, world.id, a, b, tick) for a, b, tick in society.ended_links],
         )
         self.conn.executemany(
-            "INSERT OR REPLACE INTO cultures VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO cultures VALUES (?,?,?,?,?,?,?,?,?,?)",
             [
                 (
                     world.id,
@@ -555,6 +560,7 @@ class Store:
                     culture.origin,
                     _json(culture.language),
                     _json(dict(sorted(culture.words.items()))),
+                    _json(dict(sorted(culture.ways.items()))),
                 )
                 for culture in (society.cultures[cid] for cid in sorted(society.dirty_cultures))
             ],
@@ -750,10 +756,12 @@ class Store:
                     target_y=row[15],
                     target_x=row[16],
                     work=json.loads(row[17]),
+                    gift=row[18],
                 )
                 for row in self.conn.execute(
                     "SELECT id, name, sex, born, mother, father, family, clan, partner, traits, "
-                    "children, last_birth, moved, discoveries, activity, target_y, target_x, work "
+                    "children, last_birth, moved, discoveries, activity, target_y, target_x, work, "
+                    "gift "
                     "FROM persons "
                     "WHERE world_id = ? AND died IS NULL ORDER BY id",
                     (world_id,),

@@ -354,3 +354,6 @@ button.plain.name:hover { text-decoration-color: var(--ochre, #e0b45c); }
 .banner.peace_made strong { color: #ece6d6; }
 @keyframes banner-in { 0% { opacity: 0; transform: translate(-50%, -8px) scale(0.96); } 8% { opacity: 1; transform: translate(-50%, 0) scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .banner { animation: none; } }
+
+.peoples .ways { font-style: italic; }
+.gift { margin: -2px 0 8px; font: 600 15px/1.3 var(--ui); color: var(--ochre); }

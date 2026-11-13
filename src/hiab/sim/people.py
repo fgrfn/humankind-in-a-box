@@ -53,6 +53,8 @@ class Person:
     target_y: int = -1
     target_x: int = -1
     work: dict[str, int] = field(default_factory=dict)
+    # A rare gift that sets someone apart: "leader", "inventor", "warrior" or "healer".
+    gift: str = ""
 
 
 @dataclass(slots=True)
@@ -130,6 +132,13 @@ class Culture:
     language: dict[str, str]  # how the people spoke when it formed
     words: dict[str, str] = field(default_factory=dict)  # meaning -> word, made when first needed
     ended: int | None = None
+    # The people's ways, 0..100 each: how warlike, how keen on trade, how
+    # inventive, how bound to its land, how devout. Drawn when it forms, close to
+    # those of the people it came from, so peoples differ and stay themselves.
+    ways: dict[str, int] = field(default_factory=dict)
+
+
+WAYS = ("warlike", "trading", "inventive", "rooted", "devout")
 
 
 def sound_distance(a: dict[str, str], b: dict[str, str]) -> int:
@@ -190,6 +199,7 @@ class Society:
         self.campable = ~world.map.water & ~world.map.river
         self._effects: dict[int, tuple[dict[str, int], float, int, int]] = {}
         self._labour: dict[int, int] = {}
+        self.gifts: dict[int, set[str]] = {}
         self.retired: dict[int, Clan] = {}  # clans dissolved since the last save
         self.dead: dict[int, Person] = {}  # people who died since the last save
         self.vanished: set[int] = set()  # ruins that disappeared since the last save
@@ -341,12 +351,25 @@ class Society:
             origin=clan.id,
             language=dict(clan.language),
         )
+        before = self.cultures.get(parent)
+        for way in WAYS:
+            if before is not None and way in before.ways:
+                drift = self.world.draw_int(f"people_ways.{way}", -15, 15)
+                culture.ways[way] = max(0, min(100, before.ways[way] + drift))
+            else:
+                culture.ways[way] = self.world.draw_int(f"people_ways.{way}", 15, 85)
         self.next_culture += 1
         self.cultures[culture.id] = culture
         self.dirty_cultures.add(culture.id)
         clan.culture = culture.id
         self.dirty_clans.add(clan.id)
         return culture
+
+    def way(self, clan: Clan, way: str) -> float:
+        """How strongly the clan's people leans one way: 0.4 for not at all, 1.6 for very."""
+        culture = self.cultures.get(clan.culture)
+        value = culture.ways.get(way, 50) if culture is not None else 50
+        return 0.4 + 1.2 * value / 100
 
     @staticmethod
     def place_endings(language: dict[str, str]) -> list[str]:
@@ -830,6 +853,40 @@ class Society:
             self.set_work(crew, rid, y, x)
             self.walk(clan.y, clan.x, y, x, len(crew))
 
+    # ---- the gifted -------------------------------------------------------
+
+    GIFTS = ("leader", "inventor", "warrior", "healer")
+
+    def maybe_gifted(self, person: Person, clan: Clan) -> None:
+        """Seldom someone comes of age who will change things for the clan."""
+        world = self.world
+        if not world.roll("gifted", "person", person.id, self.p.gifted_chance, [], detail=True):
+            return
+        gift = self.GIFTS[world.draw_int("gift", 0, len(self.GIFTS) - 1)]
+        person.gift = gift
+        # The gift shows in what the person is: the leader wins people over, the
+        # warrior is strong, the inventor and the healer have skilled hands.
+        index = {"leader": 2, "warrior": 0, "inventor": 1, "healer": 3}[gift]
+        person.traits[index] = max(person.traits[index], 95)
+        self.dirty_persons.add(person.id)
+        world.count(f"gifted.{gift}")
+        world.emit(
+            f"gifted_{gift}",
+            data={"name": person.name, "person": person.id, "clan": clan.name, "clan_id": clan.id},
+        )
+
+    def note_gifts(self, clan: Clan) -> None:
+        """Which gifts the clan's living adults have, for this year's rolls."""
+        found = {
+            self.persons[pid].gift
+            for pid in clan.members
+            if pid in self.persons and self.persons[pid].gift
+        }
+        if found:
+            self.gifts[clan.id] = found
+        else:
+            self.gifts.pop(clan.id, None)
+
     # ---- one year in a life ----------------------------------------------
 
     def person_year(self, person: Person) -> None:
@@ -855,12 +912,16 @@ class Society:
             factors.append(("knowledge", mortality))
         if person.traits[0] != 50:
             factors.append(("vigor", 1.5 - person.traits[0] / 100))
+        if "healer" in self.gifts.get(clan.id, ()):
+            factors.append(("healer_in_clan", 0.85))
         if world.roll(f"death.{band}", "person", person.id, min(base, 1.0), factors, detail=True):
             self.die(person, "hunger" if unmet >= 25 else band)
             return
 
         if age < p.adult_age:
             return
+        if age == p.adult_age and not person.gift:
+            self.maybe_gifted(person, clan)
         if person.partner == 0:
             self.maybe_pair(person, clan)
             # Pairing can take somebody to the partner's clan;
@@ -1099,7 +1160,11 @@ class Society:
                 if offered:
                     factors.append(("goods_to_offer", 2.0))
                 if not world.roll(
-                    "trade_begins", "group", clan.id, p.trade_chance_per_year, factors
+                    "trade_begins",
+                    "group",
+                    clan.id,
+                    p.trade_chance_per_year,
+                    [*factors, ("trading_people", self.way(clan, "trading"))],
                 ):
                     continue
                 clan.partners[other.id] = world.tick
@@ -1446,6 +1511,8 @@ class Society:
             for t in sorted(clan.techs)
             if t in packs.technologies
         )
+        if "warrior" in self.gifts.get(clan.id, ()):
+            bonus += 50  # a great warrior leads the others
         return len(self.adults(clan)) * (100 + bonus)
 
     def realm_clans(self, realm: Realm) -> list[Clan]:
@@ -1514,6 +1581,7 @@ class Society:
         ruler = self.persons.get(realm.ruler)
         if ruler is not None and ruler.traits[0] >= 60:
             factors.append(("warlike_ruler", 1.5))
+        factors.append(("warlike_people", self.way(seat, "warlike")))
         if any(set(clan.partners) & theirs_clans for clan in mine):
             factors.append(("trade_partners", 0.3))
         if not world.roll("war_declared", "realm", realm.id, p.war_chance_per_year, factors):
@@ -1968,6 +2036,7 @@ class Society:
         if not adults:
             return
         self.year_of_goods(clan)
+        self.note_gifts(clan)
         self.follow(clan, adults)
         self.rule(clan, adults)
 
@@ -1986,6 +2055,9 @@ class Society:
             ]
             # More minds, more ideas: a large clan finds things sooner than a small one.
             factors.append(("many_minds", max(0.5, len(adults) / 12)))
+            factors.append(("inventive_people", self.way(clan, "inventive")))
+            if "inventor" in self.gifts.get(clan.id, ()):
+                factors.append(("inventor_in_clan", 3.0))
             if world.roll(
                 f"discover.{tech_id}", "group", clan.id, tech.base_chance_per_year, factors
             ):
@@ -2068,6 +2140,7 @@ class Society:
                 if t in packs.technologies
             )
             factors = [("works_the_soil", 3.0)] if farms else []
+            factors.append(("rooted_people", self.way(clan, "rooted")))
             if (farms or not hungry) and world.roll(
                 "settle", "group", clan.id, p.settle_chance_per_year, factors
             ):
@@ -2575,6 +2648,7 @@ class Society:
             factors.append(("settled", 0.1))
         if month >= 9:
             factors.append(("winter", 0.5))
+        factors.append(("rooted_people", 2.0 - self.way(clan, "rooted")))
         if not world.roll("migration", "group", clan.id, p.wander_chance_per_month, factors):
             return
         site = self.best_site(clan)
@@ -2732,6 +2806,7 @@ class Society:
             "next_culture": self.next_culture,
             "next_realm": self.next_realm,
             "next_war": self.next_war,
+            "gifts": {str(k): sorted(self.gifts[k]) for k in sorted(self.gifts)},
             "wars": [
                 {
                     "id": w.id,
@@ -2773,6 +2848,7 @@ class Society:
                     "language": k.language,
                     "words": dict(sorted(k.words.items())),
                     "ended": k.ended,
+                    "ways": dict(sorted(k.ways.items())),
                 }
                 for k in (self.cultures[kid] for kid in sorted(self.cultures))
             ],
@@ -2860,6 +2936,7 @@ class Society:
                 founded=raw["founded"],
                 origin=raw["origin"],
                 language=dict(raw["language"]),
+                ways=dict(raw.get("ways", {})),
                 words=dict(raw["words"]),
                 ended=raw["ended"],
             )
@@ -2885,6 +2962,9 @@ class Society:
                 people_of[clan_id] = self.clans[clan_id].culture
             self.land_people = people_of[np.clip(territory, 0, self.next_clan)]
         self._effects = {}
+        self._labour = {}
+        # The gifts as last noted, so a resumed world rolls exactly as one that ran on.
+        self.gifts = {int(k): set(v) for k, v in state.get("gifts", {}).items()}
         self.clear_dirty()
         if self.clans and not self.cultures:
             # A world from before peoples existed: everybody alive is one people,

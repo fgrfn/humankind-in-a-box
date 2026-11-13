@@ -153,6 +153,7 @@ export interface People {
   population: number;
   tiles: number;
   stores: Record<string, number>;
+  ways?: Record<string, number>;
   consonants: string;
   vowels: string;
   words: Record<string, string>;
@@ -236,6 +237,7 @@ export interface PersonDetail {
   born_year: number;
   died_year: number | null;
   cause: string | null;
+  gift?: string | null;
   age: number;
   clan: number;
   clan_name: string | null;

@@ -55,3 +55,29 @@ mild_year:
   event: mild_year
   effects:
     - {type: regrowth_modifier, resources: [game, soil], percent: 150, months: 12}
+# Rare events that make history: they strike seldom, and hard.
+volcanic_winter:
+  scope: world
+  month: 6
+  base_chance_per_year: 0.002
+  event: volcanic_winter
+  effects:
+    - {type: stock_loss, resources: [plants, game], percent: 25}
+    - {type: regrowth_modifier, resources: [plants, game, soil, fish], percent: 45, months: 36}
+great_drought:
+  scope: region
+  month: 5
+  base_chance_per_year: 0.0005
+  factors: {arid: 2.0, warm_phase: 1.5, wet: 0.3}
+  event: great_drought
+  effects:
+    - {type: stock_loss, resources: [game, plants], percent: 40}
+    - {type: regrowth_modifier, resources: [game, plants, soil], percent: 30, months: 60}
+golden_years:
+  scope: region
+  month: 3
+  base_chance_per_year: 0.0006
+  factors: {cold_phase: 0.4}
+  event: golden_years
+  effects:
+    - {type: regrowth_modifier, resources: [game, plants, soil, fish], percent: 170, months: 60}
