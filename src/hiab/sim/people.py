@@ -189,6 +189,7 @@ class Society:
         self.food_ids = world.packs.foods()
         self.campable = ~world.map.water & ~world.map.river
         self._effects: dict[int, tuple[dict[str, int], float, int, int]] = {}
+        self._labour: dict[int, int] = {}
         self.retired: dict[int, Clan] = {}  # clans dissolved since the last save
         self.dead: dict[int, Person] = {}  # people who died since the last save
         self.vanished: set[int] = set()  # ruins that disappeared since the last save
@@ -233,6 +234,7 @@ class Society:
         mortality = 1.0
         storage = self.p.storage_months
         together = self.p.clan_split_adults
+        labour = 0
         for tech_id in sorted(clan.techs):
             tech = packs.technologies.get(tech_id)
             if tech is None:
@@ -243,6 +245,7 @@ class Society:
             mortality = mortality * tech.effects.mortality_percent / 100
             storage += tech.effects.storage_months
             together += tech.effects.group_adults
+            labour += tech.effects.labour_percent
         if clan.settled:
             seen: set[str] = set()
             for building in self.places[clan.place]["buildings"]:
@@ -255,7 +258,15 @@ class Society:
                     mortality = mortality * definition.mortality_percent / 100
         result = (harvest, mortality, storage, together)
         self._effects[clan.id] = result
+        self._labour[clan.id] = labour
         return result
+
+    def labour(self, clan: Clan) -> int:
+        """Percent more food a worker brings in, from what the clan knows."""
+        if clan.id not in self._effects or clan.id not in self._labour:
+            self._effects.pop(clan.id, None)
+            self.effects(clan)
+        return self._labour[clan.id]
 
     def unmet_average(self, clan: Clan) -> int:
         return sum(clan.unmet) // len(clan.unmet) if clan.unmet else 0
@@ -448,6 +459,9 @@ class Society:
         world = self.world
         clan = self.add_clan(y, x, 0, self.new_language())
         culture = self.add_culture(clan, 0)
+        for tech_id in sorted(self.p.start_technologies):
+            if tech_id in world.packs.technologies:
+                self.learn(clan, tech_id, 0, "known")
         for _ in range(self.p.start_families):
             family = self.next_family
             self.next_family += 1
@@ -558,7 +572,10 @@ class Society:
         _builders, foragers = self.crews(clan)
         # A strong forager brings home more than a weak one.
         strength = sum(50 + person.traits[0] for person in foragers)
-        want = min(need + max(0, capacity - clan.food), strength * p.harvest_per_adult_month // 100)
+        want = min(
+            need + max(0, capacity - clan.food),
+            strength * p.harvest_per_adult_month * (100 + self.labour(clan)) // 10000,
+        )
         area = self.window(clan.y, clan.x, self.radius(clan))
 
         raws: dict[str, np.ndarray] = {}
@@ -1244,10 +1261,10 @@ class Society:
             for other in self.clans.values()
             if other.id != clan.id
             and not other.realm
-            and max(abs(other.y - clan.y), abs(other.x - clan.x)) <= p.contact_radius
+            and max(abs(other.y - clan.y), abs(other.x - clan.x)) <= p.realm_reach
         ]
-        if len(free) < 2:
-            return
+        if not free:
+            return  # nobody around to rule over
         factors = []
         if leader.traits[2] >= 60:
             factors.append(("persuasive_leader", 2.0))
@@ -1256,6 +1273,8 @@ class Society:
             factors.append(("built_up", 1.5))
         if sum(1 for other in free if other.culture == clan.culture) >= 2:
             factors.append(("kin_around", 1.5))
+        if len(free) == 1:
+            factors.append(("few_around", 0.5))
         if not world.roll(
             "realm_founded", "group", clan.id, p.realm_found_chance_per_year, factors
         ):
@@ -1965,6 +1984,8 @@ class Society:
                 for fact in sorted(tech.factors)
                 if self.clan_has_fact(clan, fact, adults)
             ]
+            # More minds, more ideas: a large clan finds things sooner than a small one.
+            factors.append(("many_minds", max(0.5, len(adults) / 12)))
             if world.roll(
                 f"discover.{tech_id}", "group", clan.id, tech.base_chance_per_year, factors
             ):
@@ -2034,17 +2055,23 @@ class Society:
                 "abandon_settlement", "group", clan.id, p.abandon_chance_per_year, []
             ):
                 self.abandon_place(clan)
-        elif (
-            not hungry
-            and world.tick - clan.arrived >= p.settle_years * DAYS_PER_YEAR
-            and any(
-                packs.technologies[t].effects.enables_settlement
+        elif world.tick - clan.arrived >= p.settle_years * DAYS_PER_YEAR and any(
+            packs.technologies[t].effects.enables_settlement
+            for t in sorted(clan.techs)
+            if t in packs.technologies
+        ):
+            # Fields bind: who works the soil stays, hungry or not; others settle
+            # only in good times.
+            farms = any(
+                packs.technologies[t].effects.harvest_percent.get("soil", 0) > 0
                 for t in sorted(clan.techs)
                 if t in packs.technologies
             )
-            and world.roll("settle", "group", clan.id, p.settle_chance_per_year, [])
-        ):
-            self.settle(clan)
+            factors = [("works_the_soil", 3.0)] if farms else []
+            if (farms or not hungry) and world.roll(
+                "settle", "group", clan.id, p.settle_chance_per_year, factors
+            ):
+                self.settle(clan)
 
         if len(adults) >= self.effects(clan)[3]:
             factors = [("hungry", 2.0)] if hungry else []

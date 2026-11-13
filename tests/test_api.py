@@ -34,6 +34,7 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
         "technologies.shelter.requires: []\n"
         # A busier start than the default, so clans split within the 60 years.
         "life.start_peoples: 3\n"
+        "life.start_technologies: []\n"
         "life.start_families: 6\n"
         "life.clan_split_adults: 16\n"
         "life.clan_split_chance_per_year: 0.25\n",
